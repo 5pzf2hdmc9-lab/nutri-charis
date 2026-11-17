@@ -602,17 +602,42 @@ a:focus-visible {
   }
 
   .print-only-sheet {
+    display: none !important;
+  }
+
+  body:not(.print-mode-clinical) .print-excel-sheet {
     display: block !important;
   }
 
+  body.print-mode-clinical {
+    background: #fff !important;
+  }
+
+  body.print-mode-clinical #root {
+    background: #fff !important;
+  }
+
+  body.print-mode-clinical .print-clinical-sheet {
+    display: block !important;
+  }
+
+  body.print-mode-clinical .print-excel-sheet {
+    display: none !important;
+  }
+
+  /* Offline print sheets only — modal preview stays inside `.no-print` and must not duplicate. */
   #printable-excel-sheet,
-  #printable-excel-sheet-modal {
+  #clinical-diet-print {
     display: block !important;
     position: static !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
     box-shadow: none !important;
-    border-radius: 8px !important;
+    border-radius: 0 !important;
+  }
+
+  .clinical-print-doc {
+    padding: 0 !important;
   }
 }

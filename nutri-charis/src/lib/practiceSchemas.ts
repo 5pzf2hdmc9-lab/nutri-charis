@@ -2,8 +2,11 @@
 import { z } from 'zod';
 import { sanitizeText } from './authAccess';
 
+/** public.clients.id is bigint — coerce form/JSON strings to positive int. */
+export const clientIdSchema = z.coerce.number().int().positive();
+
 export const soapNoteSchema = z.object({
-  client_id: z.union([z.string().min(1), z.number()]),
+  client_id: clientIdSchema,
   visit_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Μη έγκυρη ημερομηνία'),
   subjective: z.string().max(4000).default(''),
   objective: z.string().max(4000).default(''),
@@ -13,7 +16,7 @@ export const soapNoteSchema = z.object({
 });
 
 export const billingPackageSchema = z.object({
-  client_id: z.union([z.string().min(1), z.number()]),
+  client_id: clientIdSchema,
   package_name: z.string().min(1).max(120),
   total_sessions: z.coerce.number().int().min(1).max(100),
   used_sessions: z.coerce.number().int().min(0).max(100).default(0),

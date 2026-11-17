@@ -10,6 +10,13 @@ import GdprDataActions from './components/GdprDataActions';
 import SoapNotesPanel from './components/practice/SoapNotesPanel';
 import BillingPackagesPanel from './components/practice/BillingPackagesPanel';
 import ReminderCopyButton from './components/practice/ReminderCopyButton';
+import WeeklyDayMacrosTable from './components/plan/WeeklyDayMacrosTable';
+import ShoppingListModal from './components/plan/ShoppingListModal';
+import ClinicalDietPrintView from './components/plan/ClinicalDietPrintView';
+import BodyCompositionCharts from './components/measurements/BodyCompositionCharts';
+import BiomarkerPanel from './components/measurements/BiomarkerPanel';
+import { buildWeeklyShoppingList as buildShoppingFromPlan } from './lib/shoppingList';
+import { computeMacroTargets } from './lib/macroTargets';
 
 // ============================================================================
 // ΑΥΣΤΗΡΗ ΛΙΣΤΑ ADMIN
@@ -29,7 +36,7 @@ const MEAL_TYPES = [
   { key: 'Πρωινό', label: '1. Πρωινό', badge: 'ΠΡΩΙ', accent: '#f59e0b' },
   { key: 'Σνακ 1', label: '2. Σνακ 1', badge: 'ΔΕΚΑΤΙΑΝΟ', accent: '#10b981' },
   { key: 'Μεσημεριανό', label: '3. Μεσημεριανό', badge: 'ΚΥΡΙΩΣ', accent: '#38bdf8' },
-  { key: 'Σνακ 2', label: '4. Σνακ 2', badge: 'ΑΠΟΓΕΥΜΑ', accent: '#a78bfa' },
+  { key: 'Σνακ 2', label: '4. Σνακ 2', badge: 'ΑΠΟΓΕΥΜΑ', accent: '#a3e635' },
   { key: 'Βραδινό', label: '5. Βραδινό', badge: 'ΒΡΑΔΥ', accent: '#fb7185' }
 ];
 
@@ -311,42 +318,7 @@ function analyzeDayNutrition(dayPlan = {}, drinkingWaterStr = '1.5 - 2 λίτρ�
 }
 
 function buildWeeklyShoppingList(mealPlan = {}) {
-  const categories = {
-    '🥩 Πρωτεΐνες (Κρέας, Ψάρι, Αυγά)': new Set(),
-    '🥛 Γαλακτοκομικά': new Set(),
-    '🌾 Δημητριακά & Όσπρια': new Set(),
-    '🥦 Φρούτα & Λαχανικά': new Set(),
-    '🥑 Υγιεινά Λιπαρά & Ξηροί Καρποί': new Set()
-  };
-
-  DAYS.forEach((day) => {
-    MEAL_TYPES.forEach((m) => {
-      const txt = cleanMealText(mealPlan?.[day]?.[m.key] || '');
-      if (!txt) return;
-      txt.split(/[,&+\n]+/).forEach((part) => {
-        const cleanItem = part
-          .replace(/^\d+(?:[.,]\d+)?\s*(?:γρ|gr|g|ml|τεμ|φέτ\w*|μέτρι\w*|μεγάλ\w*)\s*/i, '')
-          .trim();
-        if (!cleanItem || cleanItem.length < 3) return;
-        const cap = cleanItem.charAt(0).toUpperCase() + cleanItem.slice(1);
-        if (/κοτόπουλ|γαλοπούλ|μοσχάρ|σολομ|τόν|τσιπούρ|λαβράκ|ψάρι|αυγ|σαρδέλ/i.test(cap)) {
-          categories['🥩 Πρωτεΐνες (Κρέας, Ψάρι, Αυγά)'].add(cap);
-        } else if (/γιαούρτ|cottage|τυρί|φέτα|γάλα|ανθότυρ|κεφίρ/i.test(cap)) {
-          categories['🥛 Γαλακτοκομικά'].add(cap);
-        } else if (/βρώμ|ψωμ|φρυγαν|ρύζ|μακαρόν|κινόα|φακ|ρεβίθ|φασόλ|πατάτ|γλυκοπατάτ/i.test(cap)) {
-          categories['🌾 Δημητριακά & Όσπρια'].add(cap);
-        } else if (/αμύγδαλ|καρύδ|chia|λιναρόσπορ|αβοκάντ|ελαιόλαδ|ταχίν|φιστίκ/i.test(cap)) {
-          categories['🥑 Υγιεινά Λιπαρά & Ξηροί Καρποί'].add(cap);
-        } else {
-          categories['🥦 Φρούτα & Λαχανικά'].add(cap);
-        }
-      });
-    });
-  });
-
-  return Object.entries(categories)
-    .map(([cat, set]) => ({ category: cat, items: Array.from(set) }))
-    .filter((g) => g.items.length > 0);
+  return buildShoppingFromPlan(mealPlan, DAYS, MEAL_TYPES);
 }
 
 function formatWeeklyPlanForWhatsApp(clientObj, targetKcal) {
@@ -476,44 +448,6 @@ function WeeklyEnergySvgChart({ weeklyStats, targetKcal, selectedDay, onSelectDa
             </g>
           );
         })}
-      </svg>
-    </div>
-  );
-}
-
-function BodyProgressSvgChart({ data = [] }) {
-  if (data.length < 2) return null;
-  const weights = data.map((d) => Number(d.weight));
-  const minW = Math.min(...weights) - 2;
-  const maxW = Math.max(...weights) + 2;
-  const spanW = Math.max(1, maxW - minW);
-
-  const points = data.map((d, idx) => {
-    const x = 45 + (idx / (data.length - 1)) * 610;
-    const y = 115 - ((Number(d.weight) - minW) / spanW) * 85;
-    return { x, y, weight: d.weight, date: d.date };
-  });
-
-  const polyline = points.map((p) => `${p.x},${p.y}`).join(' ');
-
-  return (
-    <div style={{ background: 'rgba(5, 9, 8, 0.82)', padding: '16px', borderRadius: '15px', border: '1px solid rgba(16, 185, 129, 0.28)', marginBottom: '16px' }}>
-      <div style={{ fontSize: '12.5px', fontWeight: '800', color: '#34d399', marginBottom: '8px' }}>
-        📈 Καμπύλη Εξέλιξης Σωματικού Βάρους (kg)
-      </div>
-      <svg viewBox="0 0 700 145" style={{ width: '100%', height: '130px' }}>
-        <polyline fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={polyline} />
-        {points.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r="5.5" fill="#050807" stroke="#34d399" strokeWidth="2.5" />
-            <text x={p.x} y={p.y - 10} fill="#fff" fontSize="11" fontWeight="800" textAnchor="middle">
-              {p.weight}kg
-            </text>
-            <text x={p.x} y="136" fill="#94a3b8" fontSize="10" textAnchor="middle">
-              {String(p.date || '').slice(5)}
-            </text>
-          </g>
-        ))}
       </svg>
     </div>
   );
@@ -2372,16 +2306,28 @@ ${summary}
           )}
         </div>
       )}
-      {!showPdfModal && (
-        <div className="print-only-sheet">
-          <PrintableExcelSheet
-            id="printable-excel-sheet"
-            theme={pdfTheme}
-            clientObj={activeClientObj}
-            mealPlan={activeClientObj?.meal_plan || {}}
-          />
-        </div>
-      )}
+      {/* Always mounted: modal is `.no-print`, so Excel/clinical print must not depend on unmounting these. */}
+      <div className="print-only-sheet print-excel-sheet">
+        <PrintableExcelSheet
+          id="printable-excel-sheet"
+          theme={pdfTheme}
+          clientObj={activeClientObj}
+          mealPlan={activeClientObj?.meal_plan || {}}
+        />
+      </div>
+      <div className="print-only-sheet print-clinical-sheet">
+        <ClinicalDietPrintView
+          id="clinical-diet-print"
+          clientObj={activeClientObj}
+          mealPlan={activeClientObj?.meal_plan || {}}
+          days={DAYS}
+          mealTypes={MEAL_TYPES}
+          shoppingList={shoppingList}
+          targetKcal={activeTargetKcal}
+          bmr={activeBmr}
+          tdee={activeTdee}
+        />
+      </div>
 
       {/* TOP COMMAND HEADER */}
       <header
@@ -2810,6 +2756,16 @@ ${summary}
                 onSelectDay={setSelectedDay}
               />
 
+              <WeeklyDayMacrosTable
+                weeklyStats={weeklyStats}
+                targetKcal={activeTargetKcal}
+                weightKg={activeClientObj?.weight}
+                bmr={activeBmr}
+                tdee={activeTdee}
+                selectedDay={selectedDay}
+                onSelectDay={setSelectedDay}
+              />
+
               {/* ZONE 1: 5 CORE METRICS */}
               <div className="telemetry-core-grid">
                 <div style={{ background: 'rgba(5, 9, 8, 0.75)', padding: '11px 12px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -2848,12 +2804,12 @@ ${summary}
                 </div>
 
                 <div style={{ background: 'rgba(5, 9, 8, 0.75)', padding: '11px 12px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: '700' }}>ΣΥΝΟΛΙΚΟ ΝΕΡΟ</div>
-                  <div className="font-mono-num" style={{ fontSize: '17px', fontWeight: '800', color: '#22d3ee', margin: '2px 0' }}>
-                    {dayNutrition.totalWater} <span style={{ fontSize: '10.5px' }}>ml</span>
+                  <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: '700' }}>ΦΥΤΙΚΕΣ ΙΝΕΣ</div>
+                  <div className="font-mono-num" style={{ fontSize: '17px', fontWeight: '800', color: '#a3e635', margin: '2px 0' }}>
+                    {dayNutrition.micros?.fiber ?? 0} <span style={{ fontSize: '10.5px' }}>g</span>
                   </div>
                   <div style={{ fontSize: '9px', color: '#64748b', marginTop: '5px' }}>
-                    Τροφές {dayNutrition.foodWater} + {dayNutrition.drinkingWater}ml
+                    Στόχος {computeMacroTargets({ targetKcal: activeTargetKcal, weightKg: activeClientObj?.weight }).fiber}g · Νερό {dayNutrition.totalWater}ml
                   </div>
                 </div>
               </div>
@@ -2989,18 +2945,17 @@ ${summary}
                   <button
                     type="button"
                     onClick={() => setShowShoppingModal(true)}
+                    className="status-badge status-badge--success"
                     style={{
-                      padding: '7px 11px',
+                      padding: '7px 12px',
                       borderRadius: '10px',
-                      background: 'rgba(167, 139, 250, 0.15)',
-                      border: '1px solid rgba(167, 139, 250, 0.45)',
-                      color: '#ddd6fe',
                       fontSize: '11px',
                       fontWeight: '800',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      letterSpacing: 0
                     }}
                   >
-                    🛒 Λίστα
+                    Δημιουργία Λίστας Σούπερ Μάρκετ
                   </button>
 
                   {isAdmin && (
@@ -3036,24 +2991,37 @@ ${summary}
                       cursor: 'pointer'
                     }}
                   >
-                    👁️ PDF
+                    Προεπισκόπηση Excel
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    className="btn-emerald"
+                    onClick={() => {
+                      document.body.classList.add('print-mode-clinical');
+                      document.body.classList.remove('print-mode-excel');
+                      let pageStyle = document.getElementById('clinical-print-page-style');
+                      if (!pageStyle) {
+                        pageStyle = document.createElement('style');
+                        pageStyle.id = 'clinical-print-page-style';
+                        pageStyle.textContent = '@page { size: A4 portrait; margin: 12mm; }';
+                        document.head.appendChild(pageStyle);
+                      }
+                      window.setTimeout(() => {
+                        window.print();
+                        document.body.classList.remove('print-mode-clinical');
+                        pageStyle?.remove();
+                      }, 80);
+                    }}
                     style={{
                       padding: '7px 12px',
-                      borderRadius: '10px',
-                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                      border: 'none',
-                      color: '#fff',
                       fontSize: '11px',
                       fontWeight: '800',
+                      borderRadius: '10px',
                       cursor: 'pointer'
                     }}
                   >
-                    🖨️ Εκτύπωση
+                    Εξαγωγή Διαιτολογίου (PDF)
                   </button>
                 </div>
               </div>
@@ -3853,17 +3821,42 @@ ${summary}
         {/* ================================================================= */}
         {activeTab === 'measurements' && activeClientObj && (
           <section className="luxury-card" style={{ padding: '20px' }}>
-            <h3 style={{ margin: '0 0 13px 0', fontSize: '17.5px', fontWeight: '800' }}>📏 Ανθρωπομετρικές Μετρήσεις & Πρόοδος ({activeClientObj.name})</h3>
+            <h3 style={{ margin: '0 0 13px 0', fontSize: '17.5px', fontWeight: '800' }}>
+              Ανθρωπομετρικές Μετρήσεις & Πρόοδος ({activeClientObj.name})
+            </h3>
 
-            <BodyProgressSvgChart data={clientMeasurements} />
+            <BodyCompositionCharts data={clientMeasurements} />
 
             {isAdmin && (
-              <form onSubmit={handleAddMeasurement} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '9px', marginBottom: '16px', background: 'rgba(5,9,8,0.75)', padding: '13px', borderRadius: '13px' }}>
-                <input className="luxury-input" type="number" step="0.1" required placeholder="Βάρος (kg) *" value={measWeight} onChange={(e) => setMeasWeight(e.target.value)} />
-                <input className="luxury-input" type="number" step="0.1" placeholder="Λίπος (%)" value={measFat} onChange={(e) => setMeasFat(e.target.value)} />
-                <input className="luxury-input" type="number" step="0.1" placeholder="Μυϊκή Μάζα (kg)" value={measMuscle} onChange={(e) => setMeasMuscle(e.target.value)} />
-                <input className="luxury-input" type="number" step="0.5" placeholder="Μέση (cm)" value={measWaist} onChange={(e) => setMeasWaist(e.target.value)} />
-                <button type="submit" style={{ padding: '11px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '11px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' }}>
+              <form
+                onSubmit={handleAddMeasurement}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                  gap: '9px',
+                  marginBottom: '16px',
+                  background: 'rgba(5,9,8,0.75)',
+                  padding: '13px',
+                  borderRadius: '13px'
+                }}
+              >
+                <div>
+                  <label className="field-label" htmlFor="meas-weight">Βάρος (kg)</label>
+                  <input id="meas-weight" className="luxury-input" type="number" step="0.1" required value={measWeight} onChange={(e) => setMeasWeight(e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="meas-fat">Λίπος (%)</label>
+                  <input id="meas-fat" className="luxury-input" type="number" step="0.1" value={measFat} onChange={(e) => setMeasFat(e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="meas-muscle">Μυϊκή Μάζα (kg)</label>
+                  <input id="meas-muscle" className="luxury-input" type="number" step="0.1" value={measMuscle} onChange={(e) => setMeasMuscle(e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="meas-waist">Μέση (cm)</label>
+                  <input id="meas-waist" className="luxury-input" type="number" step="0.5" value={measWaist} onChange={(e) => setMeasWaist(e.target.value)} />
+                </div>
+                <button type="submit" className="btn-emerald" style={{ padding: '11px', fontWeight: '800', fontSize: '12px', cursor: 'pointer', alignSelf: 'end' }}>
                   + Καταγραφή
                 </button>
               </form>
@@ -3882,9 +3875,24 @@ ${summary}
                 />
               ) : (
                 clientMeasurements.map((m) => (
-                  <div key={m.id} style={{ background: 'rgba(5,9,8,0.75)', padding: '12px 14px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                    <span className="font-mono-num" style={{ fontSize: '11.5px', color: '#94a3b8' }}>📅 {m.date}</span>
-                    <div className="font-mono-num" style={{ display: 'flex', gap: '14px', fontSize: '12.5px', fontWeight: '800' }}>
+                  <div
+                    key={m.id}
+                    style={{
+                      background: 'rgba(5,9,8,0.75)',
+                      padding: '12px 14px',
+                      borderRadius: '13px',
+                      border: '1px solid rgba(255,255,255,0.07)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px'
+                    }}
+                  >
+                    <span className="font-mono-num" style={{ fontSize: '11.5px', color: '#94a3b8' }}>
+                      {m.date}
+                    </span>
+                    <div className="font-mono-num" style={{ display: 'flex', gap: '14px', fontSize: '12.5px', fontWeight: '800', flexWrap: 'wrap' }}>
                       <span style={{ color: '#34d399' }}>Βάρος: {m.weight} kg</span>
                       {m.body_fat != null && <span style={{ color: '#fbbf24' }}>Λίπος: {m.body_fat}%</span>}
                       {m.muscle_mass != null && <span style={{ color: '#38bdf8' }}>Μυϊκή: {m.muscle_mass} kg</span>}
@@ -3894,6 +3902,25 @@ ${summary}
                 ))
               )}
             </div>
+
+            <BiomarkerPanel
+              history={activeClientObj.questionnaire?.lab_history || []}
+              isAdmin={isAdmin}
+              onSave={async (nextHistory) => {
+                const user = await requireSessionUser();
+                assertClientAccess(activeClientObj, user, isAdmin);
+                const updatedQ = { ...(activeClientObj.questionnaire || {}), lab_history: nextHistory };
+                const { error } = await supabase
+                  .from('clients')
+                  .update({ questionnaire: updatedQ })
+                  .eq('id', activeClientObj.id);
+                if (error) throw error;
+                setClients((prev) =>
+                  prev.map((c) => (c.id === activeClientObj.id ? { ...c, questionnaire: updatedQ } : c))
+                );
+                showToast('Οι αιματολογικοί δείκτες αποθηκεύτηκαν.');
+              }}
+            />
           </section>
         )}
 
@@ -4070,7 +4097,14 @@ ${summary}
                 </button>
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => {
+                    document.body.classList.remove('print-mode-clinical');
+                    document.body.classList.add('print-mode-excel');
+                    window.setTimeout(() => {
+                      window.print();
+                      document.body.classList.remove('print-mode-excel');
+                    }, 80);
+                  }}
                   style={{
                     padding: '8px 14px',
                     borderRadius: '9px',
@@ -4082,7 +4116,7 @@ ${summary}
                     cursor: 'pointer'
                   }}
                 >
-                  🖨️ Εκτύπωση / PDF
+                  Εκτύπωση Excel / PDF
                 </button>
                 <button
                   type="button"
@@ -4177,64 +4211,13 @@ ${summary}
         </div>
       )}
 
-      {/* MODAL: ΛΙΣΤΑ ΣΟΥΠΕΡ ΜΑΡΚΕΤ */}
-      {showShoppingModal && activeClientObj && (
-        <div
-          className="no-print glass-modal-backdrop"
-          style={{
-            position: 'fixed',
-            inset: 0,
-
-            zIndex: 360,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '14px'
-          }}
-        >
-          <div className="luxury-card" style={{ width: '100%', maxWidth: '540px', maxHeight: '85vh', overflowY: 'auto', padding: '20px', animation: 'fadeInSlide 0.2s ease' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '16.5px', fontWeight: '800' }}>🛒 Λίστα Σούπερ Μάρκετ</h3>
-                <div style={{ fontSize: '11.5px', color: '#94a3b8' }}>Αυτόματη εξαγωγή από το εβδομαδιαίο πλάνο</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowShoppingModal(false)}
-                style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#cbd5e1', width: '32px', height: '32px', borderRadius: '9px', cursor: 'pointer', fontWeight: '800' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {shoppingList.length === 0 ? (
-              <div style={{ color: '#94a3b8', fontSize: '13px' }}>Προσθέστε πρώτα γεύματα στο εβδομαδιαίο πρόγραμμα.</div>
-            ) : (
-              <div style={{ display: 'grid', gap: '10px' }}>
-                {shoppingList.map((grp) => (
-                  <div key={grp.category} style={{ background: 'rgba(5,9,8,0.75)', padding: '11px 13px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.07)' }}>
-                    <div style={{ fontSize: '11px', fontWeight: '800', color: '#34d399', marginBottom: '4px' }}>{grp.category}</div>
-                    <div style={{ fontSize: '12px', color: '#e2e8f0', lineHeight: '1.5' }}>{grp.items.join(' • ')}</div>
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => {
-                    const txt =
-                      `🛒 Λίστα Αγορών Εβδομάδας (${activeClientObj.name}) — Χάρις Φωτούδη\n\n` +
-                      shoppingList.map((g) => `${g.category}:\n- ${g.items.join('\n- ')}`).join('\n\n');
-                    navigator.clipboard.writeText(txt);
-                    showToast('✓ Η λίστα αντιγράφηκε!');
-                  }}
-                  style={{ padding: '12px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '11px', fontWeight: '800', fontSize: '12.5px', cursor: 'pointer' }}
-                >
-                  📋 Αντιγραφή Λίστας (για WhatsApp / Viber)
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ShoppingListModal
+        open={showShoppingModal && Boolean(activeClientObj)}
+        clientName={activeClientObj?.name}
+        shoppingList={shoppingList}
+        onClose={() => setShowShoppingModal(false)}
+        onCopied={(msg) => showToast(`✓ ${msg}`)}
+      />
 
       {/* MODAL: ΕΠΕΞΕΡΓΑΣΙΑ ΚΕΛΙΟΥ ΓΕΥΜΑΤΟΣ */}
       {editingCell && isAdmin && (

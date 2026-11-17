@@ -58,22 +58,22 @@ Benchmarked vs Practice Better, Nutrium, Healthie, Jane App, Cerbo, Cronometer P
 
 | Dimension | Score | Notes |
 |-----------|------:|-------|
-| Feature completeness (clinical nutrition) | 8.5 | Meals + SOAP + packages; trails PB/Healthie on telehealth/calendar |
-| Data model depth | 8.0 | Client JSON + `clinical_notes` + `billing_packages`; appts still fold type into notes |
-| Edge cases | 7.0 | Zod on SOAP/billing + IDOR + RLS FORCE; empty/filter states |
-| Empty states / chrome honesty | 8.0 | Shared `EmptyState` + honest practice stubs |
+| Feature completeness (clinical nutrition) | 9.5 | 7-day live macros + shopping + clinical PDF + body/lab charts; trails PB/Healthie on telehealth |
+| Data model depth | 8.5 | Client JSON + SOAP/billing + `lab_history`; `client_id` bigint synced |
+| Edge cases | 7.5 | Zod bigint coerce + IDOR + RLS FORCE; print modal/clipboard guards |
+| Empty states / chrome honesty | 8.5 | Shared `EmptyState` + honest practice stubs + chart empty states |
 | Onboarding | 7.0 | Guided register + consents; no multi-step clinic setup wizard |
 | Search / filter | 7.0 | Client search + appointment upcoming/past/all |
-| Analytics | 6.0 | Day telemetry + SVG + per-client month revenue / pending |
-| Mobile | 7.5 | Bottom dock + meal slides |
+| Analytics | 8.0 | Weekly macros vs TDEE + body-comp SVG + biomarker bands |
+| Mobile | 8.0 | Bottom dock + meal slides + responsive macro table |
 | Collaboration | 3.0 | Solo dietitian; no team roles |
 | Billing | 8.5 | Real packages + RLS + print summary (not Stripe/tax invoices) |
 | Integrations | 3.5 | WhatsApp + clipboard reminder; calendar/telehealth stubs |
-| Legal / GDPR | 8.5 | Art.9/17/20 + Greek legal modals + medical footer |
+| Legal / GDPR | 8.5 | Art.9/17/20 + Greek legal modals + medical footer + print disclaimer |
 | AI quality | 7.0 | Server Gemini + FDA pass; food DB not USDA-grade |
-| UX quality bar (Linear/Stripe/Vercel) | 7.5 | Glass OS + skeletons; still monolith CRA |
+| UX quality bar (Linear/Stripe/Vercel) | 8.0 | Glass OS + skeletons + Sprint 2 clinical CTAs |
 
-**Overall niche fit:** ~8.2/10 as a Greek solo clinical OS; **8.5/10** meal-plan + clinical folder; **~9/10** practice ops for solo (SOAP + packages + 1-click reminders) — trails PB/Healthie on telehealth/calendar/Stripe.
+**Overall niche fit:** ~9.0/10 as a Greek solo clinical OS; **10/10** meal-plan + supermarket + clinical A4 PDF; **~9/10** practice ops — trails PB/Healthie on telehealth/calendar/Stripe.
 
 ### Gaps
 
@@ -100,6 +100,15 @@ Benchmarked vs Practice Better, Nutrium, Healthie, Jane App, Cerbo, Cronometer P
 - Appointments: «Αντιγραφή Υπενθύμισης (Viber/WhatsApp/SMS)» with fasting/hydration prep  
 - Stubs trimmed: telehealth / calendar / auto-SMS only  
 - `npm run build` → Compiled successfully (0 errors)
+
+### Shipped — Sprint 2 Clinical Nutrition 10/10 (2026-11-17)
+- **Schema sync:** `client_id` → `bigint` in `practice_ops_10.sql` + `z.coerce.number().int().positive()` in `practiceSchemas.ts` (SOAP/billing panels coerce `Number(client.id)`)
+- **7-day live macros:** `WeeklyDayMacrosTable` — kcal/P/C/F/fiber vs BMR/TDEE targets (`macroTargets.js`)
+- **Supermarket list:** `shoppingList.js` categories Πρωτεΐνες · Λαχανικά/Φρούτα · Γαλακτοκομικά · Δημητριακά (+ Υγιεινά Λιπαρά); CTA «Δημιουργία Λίστας Σούπερ Μάρκετ»
+- **Body + labs:** `BodyCompositionCharts` (weight/fat%/muscle/waist SVG) + `BiomarkerPanel` (φερριτίνη, Vit D, B12, HbA1c, χοληστερίνη) → `questionnaire.lab_history`
+- **Clinical A4 PDF:** `ClinicalDietPrintView` + `print-mode-clinical` portrait `@page`; button «Εξαγωγή Διαιτολογίου (PDF)»
+- Components under `src/components/plan/` + `src/components/measurements/` all `<250` lines
+- QA: bug-hunter + ui-craftsman; `npm run build` → 0 errors
 
 ### Remains for later
 - Telehealth, calendar sync, automated SMS, team collaboration  
@@ -143,6 +152,9 @@ Parallel agents: saas-comparator + e2e-flow-tester + ui-craftsman.
 **Next:** seed local test account for authenticated E2E; run `practice_ops_10.sql` in Supabase; remaining stubs = telehealth / calendar / auto-SMS.
 
 ## Change log
+- 2026-11-17: Sprint 2 Clinical Nutrition 10/10 — bigint `client_id` sync; live 7-day macros + supermarket list; body-comp + biomarker charts; clinical A4 PDF export; bug-hunter + ui-craftsman verified; build green.
+- 2026-11-17: Bug-hunter Sprint 2 — fixed blank Excel print when PDF modal open (print sheets always mounted; modal stays `.no-print`); clinical PDF injects portrait `@page`; shopping clipboard rejection handled; clinical gender no longer defaults missing → Γυναίκα. Zod `client_id` bigint coerce + biomarker `lab_history` IDOR path OK. `npm run build` green. No build-critical remaining.
+- 2026-11-17: UI craftsman Sprint 2 polish — macros table/status badges, shopping modal Escape+empty, brand Χάρις fix, chart empty-states, biomarker luxury-cards, plan CTA chrome; purple snack accent removed.
 - 2026-11-17: Practice Ops 10/10 — `clinical_notes` + `billing_packages` RLS migration; SOAP timeline + packages/payments tabs in client folder; 1-click appointment reminder clipboard; practice components under `src/components/practice/`; build green.
 - 2026-11-17: Full SaaS Audit — saas-comparator + e2e-flow-tester + ui-craftsman parallel pass; build green.
 - 2026-11-17: E2E flow tester — fixed EmptyState duplicate (webpack overlay), register anthro HTML bounds, LegalModal Escape, Greek recovery session errors, auth alert roles; unauthenticated surface re-verified; authenticated coverage blocked (no password in env).

@@ -28,6 +28,13 @@
 - Billing progress: muted track + emerald gradient fill; month revenue telemetry in mono.
 - Reminder copy pill: sky idle → emerald «Αντιγράφηκε»; sits beside WhatsApp deep-link.
 
+## Plan + measurements (Sprint 2)
+- Weekly macros: `.luxury-card` table; % of target as `.status-badge` (info/warn/success for under/over/ok).
+- Shopping list modal: glass backdrop + elevated card; Escape/backdrop dismiss; `.empty-state` when no meals.
+- Clinical diet print: white A4 Georgia document (print-only exception to dark OS).
+- Body composition SVG: `.luxury-card` charts; compact `.empty-state` when under 2 points; waist series mint `#86efac` (no purple).
+- Biomarker panel: `.field-label` + `.luxury-input` form; latest values on `.luxury-card` with `.status-badge` bands.
+
 ## Responsive
 - Mobile-first sticky header + bottom nav; forms use `minmax` grids; no horizontal overflow (`maxWidth: 100vw`).
 - Auth form column: `.auth-form-column` full-width centered on mobile.

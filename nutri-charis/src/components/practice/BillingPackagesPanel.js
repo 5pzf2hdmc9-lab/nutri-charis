@@ -76,7 +76,7 @@ export default function BillingPackagesPanel({ client, isAdmin }) {
     try {
       const user = await requireSessionUser();
       assertClientAccess(client, user, true);
-      const parsed = parseBillingPackage({ ...form, client_id: client.id });
+      const parsed = parseBillingPackage({ ...form, client_id: Number(client.id) });
       if (!parsed.success) {
         throw new Error(parsed.error.issues?.[0]?.message || 'Μη έγκυρα πεδία πακέτου.');
       }

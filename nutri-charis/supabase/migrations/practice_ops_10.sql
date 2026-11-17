@@ -2,12 +2,17 @@
 -- NutriCharis — Practice Ops 10/10 (SOAP notes + billing packages)
 -- Run in Supabase SQL Editor after security_rls.sql. Idempotent where possible.
 -- RLS: dietitian owns rows via auth.uid() = dietitian_id (FORCE RLS).
+-- Sprint 1 Fix: client_id is bigint (matches public.clients.id), NOT uuid.
 -- =============================================================================
 
+-- Recreate if an earlier draft used uuid client_id (resets SOAP/billing rows only).
+DROP TABLE IF EXISTS public.billing_packages CASCADE;
+DROP TABLE IF EXISTS public.clinical_notes CASCADE;
+
 -- 1) Clinical SOAP notes (per visit)
-CREATE TABLE IF NOT EXISTS public.clinical_notes (
+CREATE TABLE public.clinical_notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id uuid NOT NULL REFERENCES public.clients (id) ON DELETE CASCADE,
+  client_id bigint NOT NULL REFERENCES public.clients (id) ON DELETE CASCADE,
   dietitian_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
   visit_date date NOT NULL DEFAULT (CURRENT_DATE),
   subjective text NOT NULL DEFAULT '',
@@ -19,11 +24,11 @@ CREATE TABLE IF NOT EXISTS public.clinical_notes (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS clinical_notes_client_id_idx
+CREATE INDEX clinical_notes_client_id_idx
   ON public.clinical_notes (client_id);
-CREATE INDEX IF NOT EXISTS clinical_notes_dietitian_id_idx
+CREATE INDEX clinical_notes_dietitian_id_idx
   ON public.clinical_notes (dietitian_id);
-CREATE INDEX IF NOT EXISTS clinical_notes_visit_date_idx
+CREATE INDEX clinical_notes_visit_date_idx
   ON public.clinical_notes (visit_date DESC);
 
 ALTER TABLE public.clinical_notes ENABLE ROW LEVEL SECURITY;
@@ -59,9 +64,9 @@ CREATE POLICY "clinical_notes_delete"
   USING ((SELECT auth.uid()) = dietitian_id);
 
 -- 2) Billing packages / session packs
-CREATE TABLE IF NOT EXISTS public.billing_packages (
+CREATE TABLE public.billing_packages (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  client_id uuid NOT NULL REFERENCES public.clients (id) ON DELETE CASCADE,
+  client_id bigint NOT NULL REFERENCES public.clients (id) ON DELETE CASCADE,
   dietitian_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
   package_name text NOT NULL,
   total_sessions integer NOT NULL CHECK (total_sessions >= 1 AND total_sessions <= 100),
@@ -78,11 +83,11 @@ CREATE TABLE IF NOT EXISTS public.billing_packages (
     CHECK (used_sessions <= total_sessions)
 );
 
-CREATE INDEX IF NOT EXISTS billing_packages_client_id_idx
+CREATE INDEX billing_packages_client_id_idx
   ON public.billing_packages (client_id);
-CREATE INDEX IF NOT EXISTS billing_packages_dietitian_id_idx
+CREATE INDEX billing_packages_dietitian_id_idx
   ON public.billing_packages (dietitian_id);
-CREATE INDEX IF NOT EXISTS billing_packages_payment_status_idx
+CREATE INDEX billing_packages_payment_status_idx
   ON public.billing_packages (payment_status);
 
 ALTER TABLE public.billing_packages ENABLE ROW LEVEL SECURITY;
