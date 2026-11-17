@@ -2,7 +2,7 @@ import React from 'react';
 import { LegalLinks } from './LegalModal';
 
 const DISCLAIMER =
-  'Το NutriCharis αποτελεί εργαλείο υποστήριξης διαιτολογικού σχεδιασμού και δεν υποκαθιστά ιατρική διάγνωση, συμβουλή ή θεραπεία.';
+  'Το NutriCharis αποτελεί εργαλείο υποστήριξης διαιτολογικού σχεδιασμού (Π.Δ. 133/2014 · Κώδικας Δεοντολογίας Διαιτολόγων) και δεν υποκαθιστά ιατρική διάγνωση, φαρμακευτική αγωγή ή θεραπεία. Οι AI προτάσεις γευμάτων ελέγχονται υποχρεωτικά από πτυχιούχο διαιτολόγο πριν δοθούν σε πελάτη.';
 
 export default function MedicalFooter({ onOpenLegal, compact = false }) {
   return (
@@ -31,7 +31,7 @@ export default function MedicalFooter({ onOpenLegal, compact = false }) {
       </p>
       {onOpenLegal && <LegalLinks onOpen={onOpenLegal} />}
       <p style={{ margin: '10px 0 0 0', fontSize: '10.5px', color: '#64748b', textAlign: 'center' }}>
-        GDPR • Άρθρο 9 δεδομένα υγείας • Ν. 4624/2019 • Χάρις Φωτούδη
+        GDPR Άρθρο 9 • Ν. 4624/2019 • AI Act διαφάνεια • Π.Δ. 133/2014 • Χάρις Φωτούδη
       </p>
     </footer>
   );

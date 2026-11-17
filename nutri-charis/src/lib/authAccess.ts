@@ -72,12 +72,15 @@ export async function guardClientWrite(
   return user;
 }
 
-/** Sanitize free-text fields against stored XSS payloads. */
+/** Sanitize free-text fields against stored XSS / script URL payloads. */
 export function sanitizeText(input: unknown, maxLen = 500): string {
   return String(input ?? '')
     .replace(/<[^>]*>/g, '')
     .replace(/javascript:/gi, '')
+    .replace(/vbscript:/gi, '')
+    .replace(/data:\s*text\/html/gi, '')
     .replace(/on\w+=/gi, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
     .trim()
     .slice(0, maxLen);
 }

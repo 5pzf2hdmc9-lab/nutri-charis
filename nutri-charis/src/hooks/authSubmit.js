@@ -93,7 +93,7 @@ export function createAuthHandlers(deps) {
                 calorieDelta: 0,
                 waterIntake: '1.5 - 2 λίτρα',
                 healthOther: sanitizeText(authAllergies, 300),
-                selectedMicros: ['potassium', 'iron', 'calcium', 'fiber'],
+                selectedMicros: ['vitA', 'vitC', 'vitD', 'calcium', 'iron', 'magnesium', 'potassium', 'zinc'],
                 gdprAcceptedAt: consentAt,
                 art9AcceptedAt: consentAt,
                 termsAcceptedAt: consentAt

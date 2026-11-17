@@ -1,11 +1,28 @@
+import { useMemo } from 'react';
 import GdprConsentFields from '../../GdprConsentFields';
+import PracticeToolsPanel from '../../practice/PracticeToolsPanel';
 import EmptyState from '../ui/EmptyState';
-import { PRACTICE_STUBS } from '../../../constants/practiceStubs';
 import { calculateMetabolism } from '../../../lib/nutrition-math';
 import { usePlatform } from '../platformContext';
 
 export default function ClientsTab() {
-  const { activeClientObj, activeTab, art9Accepted, clientSearch, clients, filteredClients, gdprAccepted, handleCreateClient, handleDeleteClient, isAdmin, newClientAge, newClientArt9, newClientEmail, newClientGdpr, newClientGender, newClientGoal, newClientHeight, newClientName, newClientPhone, newClientTerms, newClientWeight, setActiveClientId, setActiveTab, setArt9Accepted, setClientSearch, setGdprAccepted, setLegalDoc, setNewClientAge, setNewClientArt9, setNewClientEmail, setNewClientGdpr, setNewClientGender, setNewClientGoal, setNewClientHeight, setNewClientName, setNewClientPhone, setNewClientTerms, setNewClientWeight, setShowNewClientForm, setTermsAccepted, showNewClientForm, termsAccepted } = usePlatform();
+  const { activeClientObj, activeTab, appointments, clientSearch, clients, filteredClients, handleCreateClient, handleDeleteClient, isAdmin, newClientAge, newClientArt9, newClientEmail, newClientGdpr, newClientGender, newClientGoal, newClientHeight, newClientName, newClientPhone, newClientTerms, newClientWeight, setActiveClientId, setActiveTab, setClientSearch, setLegalDoc, setNewClientAge, setNewClientArt9, setNewClientEmail, setNewClientGdpr, setNewClientGender, setNewClientGoal, setNewClientHeight, setNewClientName, setNewClientPhone, setNewClientTerms, setNewClientWeight, setShowNewClientForm, showNewClientForm, showToast } = usePlatform();
+
+  const nextAppointment = useMemo(() => {
+    if (!activeClientObj) return null;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    return (appointments || [])
+      .filter((a) => String(a.client_id || a.client) === String(activeClientObj.id))
+      .filter((a) => {
+        const d = String(a.date || '');
+        const t = String(a.time || '00:00').slice(0, 5);
+        return d > today || (d === today && t >= hm);
+      })
+      .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))[0] || null;
+  }, [appointments, activeClientObj]);
+
   return (
 activeTab === 'clients' && isAdmin && (
           <section className="luxury-card" style={{ padding: '20px' }}>
@@ -169,35 +186,11 @@ activeTab === 'clients' && isAdmin && (
               })}
             </div>
 
-            <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
-                <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '800', color: '#e2e8f0' }}>Εργαλεία Πρακτικής</h4>
-                <span className="stub-chip">Μερικά live · μερικά stub</span>
-              </div>
-              <p style={{ margin: '0 0 10px 0', fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.5 }}>
-                SOAP notes, πακέτα/πληρωμές και 1-click υπενθυμίσεις είναι live στον φάκελο πελάτη και στα ραντεβού. Τα παρακάτω παραμένουν stubs χωρίς ψεύτικο backend.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '9px' }}>
-                {PRACTICE_STUBS.map((s) => (
-                  <div
-                    key={s.id}
-                    style={{
-                      padding: '12px 13px',
-                      borderRadius: '12px',
-                      background: 'rgba(5,9,8,0.65)',
-                      border: '1px dashed rgba(148,163,184,0.28)',
-                      opacity: 0.92
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
-                      <strong style={{ fontSize: '12px', color: '#cbd5e1' }}>{s.title}</strong>
-                      <span className="stub-chip">N/A</span>
-                    </div>
-                    <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.45 }}>{s.body}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <PracticeToolsPanel
+              client={activeClientObj}
+              nextAppointment={nextAppointment}
+              showToast={showToast}
+            />
           </section>
         )
   );

@@ -3,6 +3,8 @@ import AppointmentStatusButton from '../../practice/AppointmentStatusButton';
 import PracticePulse from '../../practice/PracticePulse';
 import ReminderCopyButton from '../../practice/ReminderCopyButton';
 import { APPOINTMENT_TYPES, normalizeAppointmentStatus } from '../../../constants/appointments';
+import { sanitizeText } from '../../../lib/authAccess';
+import { normalizePhoneE164 } from '../../../lib/notifyLinks';
 import { usePlatform } from '../platformContext';
 
 const FILTERS = [
@@ -106,11 +108,12 @@ activeTab === 'appointments' && (
                       String(c.id) === String(a.client_id || a.client) ||
                       (c.name || '').trim().toLowerCase() === String(a.client_name || a.client || '').trim().toLowerCase()
                   );
-                  const displayName = a.client_name || cl?.name || a.client || 'Συνεδρία Πελάτη';
-                  const cleanPhone = (cl?.phone || '').replace(/\D/g, '');
-                  const waPhone = cleanPhone.startsWith('69') ? `30${cleanPhone}` : cleanPhone;
+                  const displayName =
+                    sanitizeText(a.client_name || cl?.name || a.client || 'Συνεδρία Πελάτη', 120) ||
+                    'Συνεδρία Πελάτη';
+                  const waPhone = normalizePhoneE164(cl?.phone);
                   const waMsg = encodeURIComponent(
-                    `Καλησπέρα ${displayName}! Υπενθύμιση για το ραντεβού μας στο διαιτολογικό γραφείο της Χάρις Φωτούδη στις ${a.date} και ώρα ${a.time}.`
+                    `Καλησπέρα ${displayName}! Υπενθύμιση για το ραντεβού μας στο διαιτολογικό γραφείο της Χάρις Φωτούδη στις ${sanitizeText(a.date, 16)} και ώρα ${sanitizeText(String(a.time || '').slice(0, 5), 8)}.`
                   );
                   const now = new Date();
                   const today = now.toISOString().slice(0, 10);

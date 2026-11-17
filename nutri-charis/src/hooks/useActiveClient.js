@@ -3,7 +3,12 @@ import { DAYS, MEAL_TYPES } from '../constants/dietPlan';
 import { analyzeDayNutrition } from '../lib/analyzeDayNutrition';
 import { guardClientWrite } from '../lib/authAccess';
 import { cleanMealText } from '../lib/mealText';
-import { calculateMetabolism } from '../lib/nutrition-math';
+import {
+  calculateMetabolism,
+  FDA_MICROS,
+  getDefaultSelectedMicros,
+  sanitizeMicroTotals
+} from '../lib/nutrition-math';
 import { buildWeeklyShoppingList } from '../lib/whatsappPlan';
 import { supabase } from '../supabaseClient';
 
@@ -44,7 +49,7 @@ export function useActiveClient(deps) {
   const activeTargetKcal = Math.max(1000, activeTdee + activeCalorieDelta);
 
   const selectedMicros = useMemo(
-    () => activeClientObj?.questionnaire?.selectedMicros || ['potassium', 'iron', 'calcium', 'fiber'],
+    () => activeClientObj?.questionnaire?.selectedMicros || getDefaultSelectedMicros(),
     [activeClientObj]
   );
 
@@ -65,7 +70,11 @@ export function useActiveClient(deps) {
         protein: fdaAiOverride.protein ?? base.protein,
         carbs: fdaAiOverride.carbs ?? base.carbs,
         fat: fdaAiOverride.fat ?? base.fat,
-        micros: { ...base.micros, ...(fdaAiOverride.micros || {}) }
+        micros: {
+          ...base.micros,
+          ...sanitizeMicroTotals(fdaAiOverride.micros),
+          fiber: Number(fdaAiOverride.micros?.fiber ?? base.micros?.fiber ?? 0) || 0
+        }
       };
     }
     return base;
@@ -147,21 +156,36 @@ export function useActiveClient(deps) {
     }
   };
 
+  const persistSelectedMicros = async (nextMicros) => {
+    if (!activeClientObj) return;
+    await guardClientWrite(activeClientObj, isAdmin);
+    const updatedQ = { ...(activeClientObj.questionnaire || {}), selectedMicros: nextMicros };
+    const { error } = await supabase
+      .from('clients')
+      .update({ questionnaire: updatedQ })
+      .eq('id', Number(activeClientObj.id));
+    if (error) throw new Error(error.message);
+    setClients((prev) =>
+      prev.map((c) => (String(c.id) === String(activeClientObj.id) ? { ...c, questionnaire: updatedQ } : c))
+    );
+  };
+
   const toggleTrackedMicro = async (microKey) => {
     if (!activeClientObj) return;
     try {
-      await guardClientWrite(activeClientObj, isAdmin);
       const exists = selectedMicros.includes(microKey);
       const nextMicros = exists ? selectedMicros.filter((k) => k !== microKey) : [...selectedMicros, microKey];
-      const updatedQ = { ...(activeClientObj.questionnaire || {}), selectedMicros: nextMicros };
-      const { error } = await supabase
-        .from('clients')
-        .update({ questionnaire: updatedQ })
-        .eq('id', Number(activeClientObj.id));
-      if (error) throw new Error(error.message);
-      setClients((prev) =>
-        prev.map((c) => (String(c.id) === String(activeClientObj.id) ? { ...c, questionnaire: updatedQ } : c))
-      );
+      await persistSelectedMicros(nextMicros);
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
+    }
+  };
+
+  const enableAllFdaMicros = async () => {
+    if (!activeClientObj) return;
+    try {
+      await persistSelectedMicros(FDA_MICROS.map((m) => m.key));
+      showToast('✓ Εμφανίζονται και τα 27 FDA μικροθρεπτικά');
     } catch (err) {
       showToast(`⚠️ ${err.message}`);
     }
@@ -170,5 +194,5 @@ export function useActiveClient(deps) {
   useEffect(() => {
     setFdaAiOverride(null);
   }, [selectedDay]);
-  return { activeClientObj, clientMeasurements, latestBodyFat, activeFormula, activeCalorieDelta, clientMetabolism, activeBmr, activeTdee, activeTargetKcal, selectedMicros, weeklyStats, dayNutrition, shoppingList, dayAdherence, toggleMealComplete, adjustWaterGlass, handleSwitchClientFormula, handleChangeCalorieDelta, toggleTrackedMicro };
+  return { activeClientObj, clientMeasurements, latestBodyFat, activeFormula, activeCalorieDelta, clientMetabolism, activeBmr, activeTdee, activeTargetKcal, selectedMicros, weeklyStats, dayNutrition, shoppingList, dayAdherence, toggleMealComplete, adjustWaterGlass, handleSwitchClientFormula, handleChangeCalorieDelta, toggleTrackedMicro, enableAllFdaMicros };
 }

@@ -19,7 +19,7 @@ toastMsg && (
             fontWeight: '800',
             boxShadow: '0 14px 32px rgba(0,0,0,0.55)',
             border: '1px solid rgba(110, 231, 183, 0.45)',
-            zIndex: 500,
+            zIndex: 720,
             whiteSpace: 'nowrap',
             animation: 'fadeInSlide 0.2s ease'
           }}

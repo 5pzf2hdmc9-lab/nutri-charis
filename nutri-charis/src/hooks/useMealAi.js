@@ -105,8 +105,8 @@ export function useMealAi(deps) {
       const prompt = `Υπολόγισε με κλινική ακρίβεια USDA/FDA τα συνολικά ημερήσια θρεπτικά συστατικά για το παρακάτω διαιτολόγιο (${selectedDay}):
 ${summary}
 
-Επίστρεψε ΑΠΟΚΛΕΙΣΤΙΚΑ έγκυρο JSON:
-{"kcal":1650,"protein":105,"carbs":145,"fat":58,"micros":{"potassium":3100,"iron":13.5,"calcium":920,"fiber":25.4,"magnesium":340,"sodium":1650,"vitC":85,"vitD":6.5,"vitB12":3.1,"zinc":9.8,"omega3":1.4}}`;
+Επίστρεψε ΑΠΟΚΛΕΙΣΤΙΚΑ έγκυρο JSON με ΟΛΑ τα 27 FDA Daily Value μικροθρεπτικά στο micros:
+{"kcal":1650,"protein":105,"carbs":145,"fat":58,"micros":{"vitA":700,"vitC":85,"vitD":6.5,"vitE":12,"vitK":90,"thiamin":1.1,"riboflavin":1.2,"niacin":14,"vitB6":1.4,"folate":320,"vitB12":3.1,"biotin":25,"pantothenic":4.5,"calcium":920,"iron":13.5,"phosphorus":900,"iodine":140,"magnesium":340,"zinc":9.8,"selenium":48,"copper":0.8,"manganese":2.0,"chromium":28,"molybdenum":40,"chloride":1800,"potassium":3100,"choline":420,"fiber":25.4}}`;
 
       const rawText = await callMealAi(prompt);
       const parsed = parseAiJson(rawText, {});

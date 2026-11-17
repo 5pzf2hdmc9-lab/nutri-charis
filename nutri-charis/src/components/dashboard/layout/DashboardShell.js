@@ -19,10 +19,11 @@ import DataSkeleton from '../ui/DataSkeleton';
 import EmptyState from '../ui/EmptyState';
 import ToastBanner from '../ui/ToastBanner';
 import ShoppingListModal from '../../plan/ShoppingListModal';
+import DietitianConsentGate from '../../practice/DietitianConsentGate';
 import { usePlatform } from '../platformContext';
 
 export default function DashboardShell() {
-  const { activeClientObj, activeTab, clients, dataError, dataLoading, isAdmin, legalDoc, setActiveTab, setLegalDoc, setShowNewClientForm, setShowShoppingModal, shoppingList, showShoppingModal, showToast } = usePlatform();
+  const { activeClientObj, activeTab, clients, dataError, dataLoading, isAdmin, legalDoc, session, setActiveTab, setLegalDoc, setShowNewClientForm, setShowShoppingModal, shoppingList, showShoppingModal, showToast } = usePlatform();
   return (
     <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', paddingBottom: '64px' }}>
       {(dataError || (!dataLoading && clients.length === 0)) && (
@@ -83,6 +84,12 @@ export default function DashboardShell() {
         <MedicalFooter onOpenLegal={setLegalDoc} />
       </div>
       {legalDoc && <LegalModal docKey={legalDoc} onClose={() => setLegalDoc(null)} />}
+      <DietitianConsentGate
+        isAdmin={isAdmin}
+        session={session}
+        setLegalDoc={setLegalDoc}
+        showToast={showToast}
+      />
       <ToastBanner />
     </div>
   );

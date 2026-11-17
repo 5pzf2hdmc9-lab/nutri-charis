@@ -2,11 +2,12 @@ import WeeklyEnergySvgChart from '../charts/WeeklyEnergySvgChart';
 import WeeklyDayMacrosTable from '../../plan/WeeklyDayMacrosTable';
 import { DAYS } from '../../../constants/dietPlan';
 import { computeMacroTargets } from '../../../lib/macroTargets';
-import { FDA_MICROS, fdaPercent } from '../../../lib/nutrition-math';
+import { FDA_MICROS, fdaPercent, resolveFdaDv } from '../../../lib/nutrition-math';
 import { usePlatform } from '../platformContext';
 
 export default function PlanTelemetry() {
-  const { activeBmr, activeClientObj, activeTargetKcal, activeTdee, dayNutrition, fdaLoading, handleExactFdaAnalysis, isAdmin, selectedDay, selectedMicros, setSelectedDay, toggleTrackedMicro, weeklyStats } = usePlatform();
+  const { activeBmr, activeClientObj, activeTargetKcal, activeTdee, dayNutrition, enableAllFdaMicros, fdaLoading, handleExactFdaAnalysis, isAdmin, selectedDay, selectedMicros, setSelectedDay, toggleTrackedMicro, weeklyStats } = usePlatform();
+  const dvProfile = { gender: activeClientObj?.gender, age: activeClientObj?.age };
   const kcalPct = Math.min(100, Math.round((dayNutrition.kcal / Math.max(1, activeTargetKcal)) * 100));
   const macroTotalKcal = Math.max(1, dayNutrition.protein * 4 + dayNutrition.carbs * 4 + dayNutrition.fat * 9);
   const pPct = Math.round(((dayNutrition.protein * 4) / macroTotalKcal) * 100);
@@ -18,11 +19,9 @@ export default function PlanTelemetry() {
   return (
             <section className="luxury-card" style={{ padding: '18px 20px', display: 'grid', gap: '12px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '14px', fontWeight: '800' }}>🔬 Διατροφική Τηλεμετρία</span>
-                  <span style={{ fontSize: '11px', background: 'rgba(16,185,129,0.16)', color: '#6ee7b7', padding: '2px 9px', borderRadius: '99px', fontWeight: '700' }}>
-                    {selectedDay}
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span className="font-display" style={{ fontSize: '14px', fontWeight: '800', color: '#ecfdf5' }}>Διατροφική Τηλεμετρία</span>
+                  <span className="status-badge status-badge--success">{selectedDay}</span>
                 </div>
 
                 <div className="no-scrollbar" style={{ display: 'flex', alignItems: 'center', gap: '5px', overflowX: 'auto', maxWidth: '100%' }}>
@@ -68,7 +67,7 @@ export default function PlanTelemetry() {
                         whiteSpace: 'nowrap'
                       }}
                     >
-                      {fdaLoading ? '⏳...' : '✨ FDA AI'}
+                      {fdaLoading ? 'Ανάλυση…' : 'FDA AI'}
                     </button>
                   )}
                 </div>
@@ -122,7 +121,7 @@ export default function PlanTelemetry() {
 
                 <div style={{ background: 'rgba(5, 9, 8, 0.75)', padding: '11px 12px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
                   <div style={{ fontSize: '9.5px', color: '#94a3b8', fontWeight: '700' }}>ΛΙΠΑΡΑ</div>
-                  <div className="font-mono-num" style={{ fontSize: '17px', fontWeight: '800', color: '#f472b6', margin: '2px 0' }}>
+                  <div className="font-mono-num metric-fat" style={{ fontSize: '17px', fontWeight: '800', margin: '2px 0' }}>
                     {dayNutrition.fat} <span style={{ fontSize: '10.5px' }}>g</span>
                   </div>
                   <div style={{ fontSize: '9.5px', color: '#64748b', marginTop: '5px' }}>{fPct}% θερμίδων</div>
@@ -139,12 +138,13 @@ export default function PlanTelemetry() {
                 </div>
               </div>
 
-              {/* ZONE 2: SELECTED FDA MICRONUTRIENTS */}
+              {/* ZONE 2: SELECTED FDA MICRONUTRIENTS (27 official DVs, sex/age % bars) */}
               {selectedMicros.length > 0 && (
                 <div className="telemetry-micro-grid">
                   {FDA_MICROS.filter((m) => selectedMicros.includes(m.key)).map((m) => {
-                    const val = dayNutrition.micros[m.key] ?? 0;
-                    const pct = fdaPercent(val, m.dv);
+                    const val = dayNutrition.micros?.[m.key] ?? 0;
+                    const dv = resolveFdaDv(m.key, dvProfile);
+                    const pct = fdaPercent(val, dv);
                     return (
                       <div key={m.key} style={{ background: 'rgba(5, 9, 8, 0.75)', padding: '10px 12px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
                         <div style={{ fontSize: '9.5px', color: m.color, fontWeight: '800' }}>{m.label}</div>
@@ -155,7 +155,7 @@ export default function PlanTelemetry() {
                           <div style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: m.color }} />
                         </div>
                         <div style={{ fontSize: '9px', color: '#64748b', marginTop: '4px' }}>
-                          {pct}% FDA DV ({m.dv}{m.unit})
+                          {pct}% DV · {dv}{m.unit} ({activeClientObj?.gender === 'male' ? 'Α' : 'Γ'} {activeClientObj?.age || '—'}ε)
                         </div>
                       </div>
                     );
@@ -164,31 +164,42 @@ export default function PlanTelemetry() {
               )}
 
               {isAdmin && (
-                <div style={{ paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: '700' }}>FDA Πελάτη:</span>
-                  {FDA_MICROS.map((m) => {
-                    const active = selectedMicros.includes(m.key);
-                    return (
-                      <button
-                        key={m.key}
-                        type="button"
-                        onClick={() => toggleTrackedMicro(m.key)}
-                        style={{
-                          padding: '4px 8px',
-                          borderRadius: '99px',
-                          fontSize: '10px',
-                          fontWeight: active ? '700' : '500',
-                          background: active ? 'rgba(16, 185, 129, 0.18)' : 'rgba(255,255,255,0.03)',
-                          color: active ? '#6ee7b7' : '#64748b',
-                          border: active ? '1px solid rgba(16, 185, 129, 0.45)' : '1px solid rgba(255,255,255,0.06)',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        {active ? '✓ ' : '+ '}
-                        {m.label}
-                      </button>
-                    );
-                  })}
+                <div style={{ paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'grid', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '10.5px', color: '#94a3b8', fontWeight: '700' }}>FDA Πάνελ (27 DV):</span>
+                    <span className="status-badge status-badge--info">{FDA_MICROS.length} μικροθρεπτικά</span>
+                    <button
+                      type="button"
+                      className="filter-chip filter-chip--on"
+                      onClick={enableAllFdaMicros}
+                      style={{ padding: '4px 8px', fontSize: '10px' }}
+                    >
+                      Εμφάνιση όλων
+                    </button>
+                  </div>
+                  {selectedMicros.length === 0 ? (
+                    <div className="empty-state" role="status" style={{ minHeight: 0, padding: '12px 10px' }}>
+                      <p className="empty-state__title font-display" style={{ fontSize: 12 }}>Κανένα μικροθρεπτικό ενεργό</p>
+                      <p className="empty-state__hint">Επιλέξτε chips ή πατήστε «Εμφάνιση όλων» για τα 27 FDA DV.</p>
+                    </div>
+                  ) : null}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                    {FDA_MICROS.map((m) => {
+                      const active = selectedMicros.includes(m.key);
+                      return (
+                        <button
+                          key={m.key}
+                          type="button"
+                          className={`filter-chip ${active ? 'filter-chip--on' : 'filter-chip--off'}`}
+                          onClick={() => toggleTrackedMicro(m.key)}
+                          style={{ padding: '4px 8px', fontSize: '10px', fontWeight: active ? 700 : 500 }}
+                        >
+                          {active ? '✓ ' : '+ '}
+                          {m.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </section>

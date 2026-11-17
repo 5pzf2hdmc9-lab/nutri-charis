@@ -1,22 +1,109 @@
 // @ts-nocheck — Zod 4 typings require TypeScript 5+; CRA pins TS 4.9 via react-scripts.
 import { z } from 'zod';
 
-/** FDA Daily Values for 11 tracked micronutrients (adult reference). */
+/**
+ * Official FDA Daily Values — 27 micronutrients (vitamins + minerals/choline).
+ * Base `dv` = adult Nutrition Facts reference; use resolveFdaDv() for sex/age bars.
+ */
 export const FDA_MICROS = [
-  { key: 'potassium', label: 'Κάλιο (K)', unit: 'mg', dv: 4700, color: '#34d399' },
-  { key: 'iron', label: 'Σίδηρος (Fe)', unit: 'mg', dv: 18, color: '#f87171' },
-  { key: 'calcium', label: 'Ασβέστιο (Ca)', unit: 'mg', dv: 1300, color: '#60a5fa' },
-  { key: 'fiber', label: 'Φυτικές Ίνες', unit: 'g', dv: 28, color: '#fbbf24' },
-  { key: 'magnesium', label: 'Μαγνήσιο (Mg)', unit: 'mg', dv: 420, color: '#a78bfa' },
-  { key: 'sodium', label: 'Νάτριο (Na)', unit: 'mg', dv: 2300, color: '#fb923c' },
+  { key: 'vitA', label: 'Βιταμίνη A', unit: 'mcg', dv: 900, color: '#fbbf24' },
   { key: 'vitC', label: 'Βιταμίνη C', unit: 'mg', dv: 90, color: '#facc15' },
   { key: 'vitD', label: 'Βιταμίνη D', unit: 'mcg', dv: 20, color: '#38bdf8' },
-  { key: 'vitB12', label: 'Βιταμίνη B12', unit: 'mcg', dv: 2.4, color: '#f472b6' },
-  { key: 'zinc', label: 'Ψευδάργυρος (Zn)', unit: 'mg', dv: 11, color: '#2dd4bf' },
-  { key: 'omega3', label: 'Ωμέγα-3', unit: 'g', dv: 1.6, color: '#818cf8' }
+  { key: 'vitE', label: 'Βιταμίνη E', unit: 'mg', dv: 15, color: '#a3e635' },
+  { key: 'vitK', label: 'Βιταμίνη K', unit: 'mcg', dv: 120, color: '#4ade80' },
+  { key: 'thiamin', label: 'Θειαμίνη B1', unit: 'mg', dv: 1.2, color: '#fb923c' },
+  { key: 'riboflavin', label: 'Ριβοφλαβίνη B2', unit: 'mg', dv: 1.3, color: '#fdba74' },
+  { key: 'niacin', label: 'Νιασίνη B3', unit: 'mg', dv: 16, color: '#f97316' },
+  { key: 'vitB6', label: 'Βιταμίνη B6', unit: 'mg', dv: 1.7, color: '#fb7185' },
+  { key: 'folate', label: 'Φυλλικό B9', unit: 'mcg', dv: 400, color: '#f59e0b' },
+  { key: 'vitB12', label: 'Βιταμίνη B12', unit: 'mcg', dv: 2.4, color: '#0ea5e9' },
+  { key: 'biotin', label: 'Βιοτίνη B7', unit: 'mcg', dv: 30, color: '#14b8a6' },
+  { key: 'pantothenic', label: 'Παντοθενικό B5', unit: 'mg', dv: 5, color: '#67e8f9' },
+  { key: 'calcium', label: 'Ασβέστιο', unit: 'mg', dv: 1300, color: '#60a5fa' },
+  { key: 'iron', label: 'Σίδηρος', unit: 'mg', dv: 18, color: '#f87171' },
+  { key: 'phosphorus', label: 'Φώσφορος', unit: 'mg', dv: 1250, color: '#7dd3fc' },
+  { key: 'iodine', label: 'Ιώδιο', unit: 'mcg', dv: 150, color: '#22d3ee' },
+  { key: 'magnesium', label: 'Μαγνήσιο', unit: 'mg', dv: 420, color: '#2dd4bf' },
+  { key: 'zinc', label: 'Ψευδάργυρος', unit: 'mg', dv: 11, color: '#14b8a6' },
+  { key: 'selenium', label: 'Σελήνιο', unit: 'mcg', dv: 55, color: '#34d399' },
+  { key: 'copper', label: 'Χαλκός', unit: 'mg', dv: 0.9, color: '#86efac' },
+  { key: 'manganese', label: 'Μαγγάνιο', unit: 'mg', dv: 2.3, color: '#a7f3d0' },
+  { key: 'chromium', label: 'Χρώμιο', unit: 'mcg', dv: 35, color: '#6ee7b7' },
+  { key: 'molybdenum', label: 'Μολυβδαίνιο', unit: 'mcg', dv: 45, color: '#5eead4' },
+  { key: 'chloride', label: 'Χλώριο', unit: 'mg', dv: 2300, color: '#94a3b8' },
+  { key: 'potassium', label: 'Κάλιο', unit: 'mg', dv: 4700, color: '#34d399' },
+  { key: 'choline', label: 'Χολίνη', unit: 'mg', dv: 550, color: '#fcd34d' }
 ] as const;
 
 export type FdaMicroKey = (typeof FDA_MICROS)[number]['key'];
+
+const DEFAULT_SELECTED_MICROS: FdaMicroKey[] = [
+  'vitA',
+  'vitC',
+  'vitD',
+  'calcium',
+  'iron',
+  'magnesium',
+  'potassium',
+  'zinc'
+];
+
+export function getDefaultSelectedMicros(): FdaMicroKey[] {
+  return [...DEFAULT_SELECTED_MICROS];
+}
+
+/**
+ * Sex/age–aware Daily Value for live % bars (FDA label base + RDA-style adjustments).
+ */
+export function resolveFdaDv(
+  key: FdaMicroKey | string,
+  profile: { gender?: string; age?: number } = {}
+): number {
+  const micro = FDA_MICROS.find((m) => m.key === key);
+  if (!micro) return 0;
+  const gender = profile.gender === 'male' ? 'male' : 'female';
+  const age = clampNum(profile.age, 5, 115, 30);
+  const base = micro.dv;
+
+  switch (key) {
+    case 'iron':
+      if (gender === 'male') return 8;
+      if (age > 50) return 8;
+      return 18;
+    case 'magnesium':
+      return gender === 'male' ? 420 : 320;
+    case 'zinc':
+      return gender === 'male' ? 11 : 8;
+    case 'vitA':
+      return gender === 'male' ? 900 : 700;
+    case 'vitC':
+      return gender === 'male' ? 90 : 75;
+    case 'vitK':
+      return gender === 'male' ? 120 : 90;
+    case 'thiamin':
+      return gender === 'male' ? 1.2 : 1.1;
+    case 'riboflavin':
+      return gender === 'male' ? 1.3 : 1.1;
+    case 'niacin':
+      return gender === 'male' ? 16 : 14;
+    case 'vitB6':
+      if (age > 50) return gender === 'male' ? 1.7 : 1.5;
+      return gender === 'male' ? 1.3 : 1.3;
+    case 'choline':
+      return gender === 'male' ? 550 : 425;
+    case 'chromium':
+      if (age > 50) return gender === 'male' ? 30 : 20;
+      return gender === 'male' ? 35 : 25;
+    case 'calcium':
+      if (age < 19) return 1300;
+      if (age > 50) return 1200;
+      return 1000;
+    case 'phosphorus':
+      return age < 19 ? 1250 : 700;
+    default:
+      return base;
+  }
+}
 
 const metabolismInputSchema = z.object({
   gender: z.union([z.literal('male'), z.literal('female')]).default('female'),

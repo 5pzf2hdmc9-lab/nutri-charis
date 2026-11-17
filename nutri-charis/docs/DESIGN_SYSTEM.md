@@ -19,8 +19,14 @@
 
 ## Legal / compliance UI
 - Consent checkboxes (GDPR + Art.9 + Terms) use compact 11px copy with emerald accent checkboxes.
-- Legal modals: max-width ~640px, scrollable, Greek copy.
-- Permanent medical disclaimer footer on auth + authenticated shell (`.MedicalFooter` glass panel with amber «Ιατρική Αποποίηση»).
+- Legal modals: max-width ~640px, scrollable, Greek copy — Privacy, Terms, Cookies/Storage, **AI Transparency**; Escape + backdrop; header `.modal-close` + footer `.btn-emerald`.
+- Permanent medical disclaimer footer on auth + authenticated shell (`.MedicalFooter` glass panel with amber «Ιατρική Αποποίηση» + Π.Δ. 133/2014 / AI Act line).
+- Dietitian consent gate: blocking glass modal when `dietitians` consent timestamps are null (no backdrop dismiss); secondary AI Transparency link.
+
+## Practice tools (live)
+- Clients tab: `PracticeToolsPanel` — three live cards (Jitsi / Calendar / Notify) with `.status-badge--success`, not N/A stubs.
+- CTAs: `.btn-emerald` open room + secondary bordered emerald pills for copy / GCal / .ics / deep-links.
+- FDA 27 telemetry: `.filter-chip` toggles + «Εμφάνιση όλων»; empty selection → `.empty-state`; macro fat `.metric-fat` (amber); micro bars emerald/amber/sky/teal — no purple.
 
 ## Practice folder (SOAP / billing)
 - Client folder uses `.filter-chip` sub-tabs (Επισκόπηση / SOAP / Πακέτα) — one panel job each.

@@ -44,7 +44,7 @@ export function useClientRecords(deps) {
           activityLevel: 1.375,
           calorieDelta: 0,
           waterIntake: '1.5 - 2 λίτρα',
-          selectedMicros: ['potassium', 'iron', 'calcium', 'fiber'],
+          selectedMicros: ['vitA', 'vitC', 'vitD', 'calcium', 'iron', 'magnesium', 'potassium', 'zinc'],
           gdprAcceptedAt: consentAt,
           art9AcceptedAt: consentAt,
           termsAcceptedAt: consentAt
