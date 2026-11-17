@@ -88,6 +88,107 @@ function cleanMealText(raw) {
     .trim();
 }
 
+/** Detect Supabase password-recovery redirect via hash or query (`type=recovery`). */
+function isPasswordRecoveryFromUrl() {
+  if (typeof window === 'undefined') return false;
+  const hash = String(window.location.hash || '');
+  const search = String(window.location.search || '');
+  try {
+    const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+    const queryParams = new URLSearchParams(search);
+    if (hashParams.get('type') === 'recovery' || queryParams.get('type') === 'recovery') return true;
+  } catch {
+    /* ignore malformed URL params */
+  }
+  return /(?:[?&#]|^)type=recovery(?:&|$)/i.test(`${search}${hash}`);
+}
+
+function clearAuthRedirectParamsFromUrl() {
+  if (typeof window === 'undefined' || !window.history?.replaceState) return;
+  try {
+    window.history.replaceState(null, '', window.location.pathname);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Simple password strength meter for recovery / register UX. */
+function getPasswordStrength(pw) {
+  const p = String(pw || '');
+  if (!p) return { score: 0, label: '', color: '#64748b', pct: 0 };
+  let score = 0;
+  if (p.length >= 6) score += 1;
+  if (p.length >= 10) score += 1;
+  if (/[A-ZΑ-Ω]/.test(p) && /[a-zα-ω]/.test(p)) score += 1;
+  if (/\d/.test(p)) score += 1;
+  if (/[^A-Za-zΑ-Ωα-ω0-9]/.test(p)) score += 1;
+  const labels = ['Πολύ αδύναμος', 'Αδύναμος', 'Μέτριος', 'Καλός', 'Ισχυρός'];
+  const colors = ['#f87171', '#fb923c', '#fbbf24', '#34d399', '#10b981'];
+  const idx = Math.min(4, Math.max(0, score - 1));
+  return { score, label: labels[idx], color: colors[idx], pct: Math.min(100, score * 20) };
+}
+
+/**
+ * Prefer server `/api/generate-meals` (GEMINI_API_KEY). Fall back to local admin key.
+ * Always returns raw model text; throws with Greek user-facing message on failure.
+ */
+async function callMealAi(promptText, clientApiKey = '') {
+  const prompt = String(promptText || '').slice(0, 12000);
+  try {
+    const res = await fetch('/api/generate-meals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ promptText: prompt })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && typeof data?.text === 'string' && data.text.trim()) {
+      return data.text;
+    }
+    if (res.status !== 503 && res.status !== 404) {
+      throw new Error(data?.error || 'Αποτυχία AI υπηρεσίας.');
+    }
+  } catch (err) {
+    if (!clientApiKey) throw err;
+  }
+
+  if (!clientApiKey) {
+    throw new Error('AI μη διαθέσιμο. Ρυθμίστε το Gemini API Key.');
+  }
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${clientApiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json' }
+      })
+    }
+  );
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error?.message || 'Gemini API Error');
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+function parseAiJson(rawText, fallback) {
+  const text = String(rawText || '').trim();
+  if (!text) return fallback;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/(\[[\s\S]*\]|\{[\s\S]*\})/);
+    if (match) {
+      try {
+        return JSON.parse(match[1]);
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
+  }
+}
+
 function analyzeDayNutrition(dayPlan = {}, drinkingWaterStr = '1.5 - 2 λίτρα') {
   let kcal = 0, protein = 0, carbs = 0, fat = 0, foodWater = 0;
   let potassium = 0, iron = 0, calcium = 0, fiber = 0, magnesium = 0, sodium = 0;
@@ -602,7 +703,9 @@ function NutriCharisPlatform() {
   // Auth & Guided Client Onboarding State
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register' | 'forgot' | 'recovery'
+  const [authMode, setAuthMode] = useState(() =>
+    isPasswordRecoveryFromUrl() ? 'recovery' : 'login'
+  ); // 'login' | 'register' | 'forgot' | 'recovery'
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -616,6 +719,9 @@ function NutriCharisPlatform() {
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authName, setAuthName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
   const [authGender, setAuthGender] = useState('female');
@@ -743,17 +849,45 @@ function NutriCharisPlatform() {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data?.session || null);
-      setAuthLoading(false);
-    });
+    const syncRecoveryFromUrl = () => {
+      if (isPasswordRecoveryFromUrl()) setAuthMode('recovery');
+    };
+    // URL hash/query backup: some clients emit SIGNED_IN instead of PASSWORD_RECOVERY.
+    syncRecoveryFromUrl();
+    window.addEventListener('hashchange', syncRecoveryFromUrl);
+    window.addEventListener('popstate', syncRecoveryFromUrl);
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        setSession(data?.session || null);
+        syncRecoveryFromUrl();
+        setAuthLoading(false);
+      })
+      .catch(() => {
+        setSession(null);
+        setAuthLoading(false);
+      });
+
     const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && isPasswordRecoveryFromUrl())) {
         setAuthMode('recovery');
       }
+      if (event === 'SIGNED_OUT') {
+        setAuthMode('login');
+        setClients([]);
+        setAppointments([]);
+        setMeasurements([]);
+        setActiveClientId(null);
+        setDataError('');
+      }
     });
-    return () => listener?.subscription?.unsubscribe();
+    return () => {
+      window.removeEventListener('hashchange', syncRecoveryFromUrl);
+      window.removeEventListener('popstate', syncRecoveryFromUrl);
+      listener?.subscription?.unsubscribe();
+    };
   }, []);
 
   const isAdmin = useMemo(() => {
@@ -768,6 +902,11 @@ function NutriCharisPlatform() {
     if (!session?.user) return;
     loadAllData();
   }, [session, isAdmin]);
+
+  // Non-admin shells hide the clients tab — never leave them on a blank tab.
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'clients') setActiveTab('plan');
+  }, [isAdmin, activeTab]);
 
   const loadAllData = async () => {
     setDataLoading(true);
@@ -925,6 +1064,22 @@ function NutriCharisPlatform() {
     [activeClientObj?.meal_plan]
   );
 
+  /** Defense-in-depth: only show appointments tied to visible client folders. */
+  const visibleAppointments = useMemo(() => {
+    const idSet = new Set(clients.map((c) => String(c.id)));
+    const nameSet = new Set(
+      clients.map((c) => String(c.name || '').trim().toLowerCase()).filter(Boolean)
+    );
+    return appointments.filter((a) => {
+      const cid = String(a.client_id || a.client || '');
+      if (cid && idSet.has(cid)) return true;
+      const cname = String(a.client_name || a.client || '')
+        .trim()
+        .toLowerCase();
+      return Boolean(cname && nameSet.has(cname));
+    });
+  }, [appointments, clients]);
+
   const calcResult = useMemo(
     () =>
       calculateMetabolism({
@@ -965,9 +1120,30 @@ function NutriCharisPlatform() {
     localStorage.setItem('nutricharis_water_glasses', JSON.stringify(next));
   };
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      /* session cleared locally below even if network fails */
+    }
+    setSession(null);
+    setAuthMode('login');
+    setClients([]);
+    setAppointments([]);
+    setMeasurements([]);
+    setActiveClientId(null);
+    setDataError('');
+    setAuthError('');
+    setAuthSuccess('');
+    setNewPasswordInput('');
+    setConfirmPasswordInput('');
+    showToast('Αποσυνδεθήκατε με ασφάλεια.');
+  };
+
   // Auth Handlers (rate-limited; identity always from Supabase Auth)
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
+    if (authSubmitting) return;
     setAuthError('');
     setAuthSuccess('');
 
@@ -980,96 +1156,124 @@ function NutriCharisPlatform() {
       return;
     }
 
-    if (authMode === 'forgot') {
-      const { error } = await supabase.auth.resetPasswordForEmail(emailClean, {
-        redirectTo: window.location.origin
-      });
-      if (error) setAuthError(error.message);
-      else setAuthSuccess('✓ Στάλθηκε σύνδεσμος επαναφοράς κωδικού στο email σας!');
-      return;
-    }
+    setAuthSubmitting(true);
+    try {
+      if (authMode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(emailClean, {
+          redirectTo: `${window.location.origin}/`
+        });
+        if (error) setAuthError(error.message);
+        else setAuthSuccess('✓ Στάλθηκε σύνδεσμος επαναφοράς κωδικού στο email σας!');
+        return;
+      }
 
-    if (authMode === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: emailClean,
-        password: authPassword
-      });
-      if (error) setAuthError('Λάθος email ή κωδικός πρόσβασης.');
-      else resetRateLimit(authRateKey('login', emailClean));
-    } else if (authMode === 'register') {
-      if (!gdprAccepted || !art9Accepted || !termsAccepted) {
-        setAuthError('Απαιτείται ρητή συγκατάθεση GDPR, Άρθρου 9 (δεδομένα υγείας) και Όρων Χρήσης.');
-        return;
-      }
-      const age = parseStrictNum(authAge, 5, 115);
-      const weight = parseStrictNum(authWeight, 25, 350);
-      const height = parseStrictNum(authHeight, 90, 240);
-      if (Number.isNaN(age) || Number.isNaN(weight) || Number.isNaN(height)) {
-        setAuthError('Μη έγκυρα ανθρωπομετρικά (ηλικία 5–115, βάρος 25–350kg, ύψος 90–240cm).');
-        return;
-      }
-      const { data, error } = await supabase.auth.signUp({
-        email: emailClean,
-        password: authPassword
-      });
-      if (error) {
-        setAuthError(error.message);
-        return;
-      }
-      if (data?.user?.id) {
-        const consentAt = new Date().toISOString();
-        const { error: insertErr } = await supabase.from('clients').insert([
-          {
-            name: sanitizeText(authName, 120) || emailClean.split('@')[0],
-            email: emailClean,
-            phone: sanitizeText(authPhone, 40),
-            gender: authGender === 'male' ? 'male' : 'female',
-            age,
-            weight,
-            height,
-            goal: sanitizeText(authGoal, 200) || 'Ισορροπημένη διατροφή',
-            user_id: data.user.id,
-            gdpr_consent_at: consentAt,
-            art9_consent_at: consentAt,
-            terms_accepted_at: consentAt,
-            questionnaire: {
-              bmrFormula: 'mifflin',
-              activityLevel: Number(authActivity) || 1.375,
-              calorieDelta: 0,
-              waterIntake: '1.5 - 2 λίτρα',
-              healthOther: sanitizeText(authAllergies, 300),
-              selectedMicros: ['potassium', 'iron', 'calcium', 'fiber'],
-              gdprAcceptedAt: consentAt,
-              art9AcceptedAt: consentAt,
-              termsAcceptedAt: consentAt
-            },
-            meal_plan: {}
-          }
-        ]);
-        if (insertErr) {
-          setAuthError(insertErr.message || 'Αποτυχία δημιουργίας φακέλου.');
+      if (authMode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: emailClean,
+          password: authPassword
+        });
+        if (error) setAuthError('Λάθος email ή κωδικός πρόσβασης.');
+        else resetRateLimit(authRateKey('login', emailClean));
+      } else if (authMode === 'register') {
+        if (!gdprAccepted || !art9Accepted || !termsAccepted) {
+          setAuthError('Απαιτείται ρητή συγκατάθεση GDPR, Άρθρου 9 (δεδομένα υγείας) και Όρων Χρήσης.');
           return;
         }
-        resetRateLimit(authRateKey('signup', emailClean));
-        showToast('✓ Ο φάκελος & ο λογαριασμός δημιουργήθηκαν!');
+        if (authPassword.length < 6) {
+          setAuthError('Ο κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες.');
+          return;
+        }
+        const age = parseStrictNum(authAge, 5, 115);
+        const weight = parseStrictNum(authWeight, 25, 350);
+        const height = parseStrictNum(authHeight, 90, 240);
+        if (Number.isNaN(age) || Number.isNaN(weight) || Number.isNaN(height)) {
+          setAuthError('Μη έγκυρα ανθρωπομετρικά (ηλικία 5–115, βάρος 25–350kg, ύψος 90–240cm).');
+          return;
+        }
+        const { data, error } = await supabase.auth.signUp({
+          email: emailClean,
+          password: authPassword
+        });
+        if (error) {
+          setAuthError(error.message);
+          return;
+        }
+        if (data?.user?.id) {
+          const consentAt = new Date().toISOString();
+          const { error: insertErr } = await supabase.from('clients').insert([
+            {
+              name: sanitizeText(authName, 120) || emailClean.split('@')[0],
+              email: emailClean,
+              phone: sanitizeText(authPhone, 40),
+              gender: authGender === 'male' ? 'male' : 'female',
+              age,
+              weight,
+              height,
+              goal: sanitizeText(authGoal, 200) || 'Ισορροπημένη διατροφή',
+              user_id: data.user.id,
+              gdpr_consent_at: consentAt,
+              art9_consent_at: consentAt,
+              terms_accepted_at: consentAt,
+              questionnaire: {
+                bmrFormula: 'mifflin',
+                activityLevel: Number(authActivity) || 1.375,
+                calorieDelta: 0,
+                waterIntake: '1.5 - 2 λίτρα',
+                healthOther: sanitizeText(authAllergies, 300),
+                selectedMicros: ['potassium', 'iron', 'calcium', 'fiber'],
+                gdprAcceptedAt: consentAt,
+                art9AcceptedAt: consentAt,
+                termsAcceptedAt: consentAt
+              },
+              meal_plan: {}
+            }
+          ]);
+          if (insertErr) {
+            setAuthError(insertErr.message || 'Αποτυχία δημιουργίας φακέλου.');
+            return;
+          }
+          resetRateLimit(authRateKey('signup', emailClean));
+          showToast('✓ Ο φάκελος & ο λογαριασμός δημιουργήθηκαν!');
+        }
       }
+    } catch (err) {
+      setAuthError(err?.message || 'Αποτυχία σύνδεσης. Δοκιμάστε ξανά.');
+    } finally {
+      setAuthSubmitting(false);
     }
   };
 
   const handlePasswordUpdateSubmit = async (e) => {
     e.preventDefault();
+    if (passwordUpdating) return;
     setAuthError('');
-    if (newPasswordInput.length < 6) {
+    const pw = String(newPasswordInput || '');
+    const confirm = String(confirmPasswordInput || '');
+    if (pw.length < 6) {
       setAuthError('Ο νέος κωδικός πρέπει να έχει τουλάχιστον 6 χαρακτήρες.');
       return;
     }
-    const { error } = await supabase.auth.updateUser({ password: newPasswordInput });
-    if (error) {
-      setAuthError(error.message);
-    } else {
-      setAuthMode('login');
+    if (pw !== confirm) {
+      setAuthError('Οι κωδικοί δεν ταιριάζουν. Ελέγξτε την επιβεβαίωση.');
+      return;
+    }
+    setPasswordUpdating(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pw });
+      if (error) {
+        setAuthError(error.message || 'Αποτυχία ενημέρωσης κωδικού.');
+        return;
+      }
+      clearAuthRedirectParamsFromUrl();
       setNewPasswordInput('');
-      showToast('✓ Ο νέος κωδικός αποθηκεύτηκε!');
+      setConfirmPasswordInput('');
+      setAuthMode('login');
+      // Session από recovery παραμένει ενεργή → άμεση είσοδος στο dashboard.
+      showToast('✓ Ο νέος κωδικός αποθηκεύτηκε! Καλωσήρθατε.');
+    } catch (err) {
+      setAuthError(err?.message || 'Αποτυχία ενημέρωσης κωδικού.');
+    } finally {
+      setPasswordUpdating(false);
     }
   };
 
@@ -1190,13 +1394,10 @@ function NutriCharisPlatform() {
     localStorage.setItem('nutricharis_custom_ideas', JSON.stringify(next));
   };
 
-  // AI 3 Meal Options
+  // AI 3 Meal Options — server `/api/generate-meals` first, local key fallback
   const handleGenerateAiMeals = async () => {
-    if (!apiKey) {
-      setShowApiKeyModal(true);
-      return;
-    }
     if (!activeClientObj) return;
+    if (aiLoading) return;
 
     setAiLoading(true);
     setAiOptions([]);
@@ -1215,23 +1416,15 @@ function NutriCharisPlatform() {
 3. Επίστρεψε ΑΠΟΚΛΕΙΣΤΙΚΑ έγκυρο JSON array 3 αντικειμένων:
 [{"title":"Σύντομος τίτλος","meal":"Ακριβές γεύμα με γραμμάρια","kcal":420,"protein":32,"carbs":40,"fat":12}]`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        }
-      );
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
-      const parsed = JSON.parse(rawText);
+      const rawText = await callMealAi(prompt, apiKey);
+      const parsed = parseAiJson(rawText, []);
       setAiOptions(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      showToast('⚠️ Ελέγξτε το Gemini API Key στις Ρυθμίσεις.');
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        showToast('⚠️ Δεν ελήφθησαν έγκυρες προτάσεις AI. Δοκιμάστε ξανά.');
+      }
+    } catch (err) {
+      if (!apiKey) setShowApiKeyModal(true);
+      showToast(`⚠️ ${err?.message || 'Ελέγξτε το Gemini API Key στις Ρυθμίσεις.'}`);
     } finally {
       setAiLoading(false);
     }
@@ -1239,11 +1432,8 @@ function NutriCharisPlatform() {
 
   // AI Full 7-Day Plan Generator
   const handleGenerateFullWeekAi = async () => {
-    if (!apiKey) {
-      setShowApiKeyModal(true);
-      return;
-    }
     if (!activeClientObj) return;
+    if (aiFullWeekLoading) return;
     if (!window.confirm(`Να δημιουργηθεί αυτόματα πλήρες εβδομαδιαίο πλάνο 7 ημερών (~${activeTargetKcal} kcal/ημέρα) για ${activeClientObj.name};`)) {
       return;
     }
@@ -1262,20 +1452,8 @@ function NutriCharisPlatform() {
 1. Γράψε ΜΟΝΟ τα τρόφιμα με ακριβή γραμμάρια/ποσότητες (χωρίς επεξηγήσεις ή παρενθέσεις).
 2. Επίστρεψε ΑΠΟΚΛΕΙΣΤΙΚΑ έγκυρο JSON object με κλειδιά τις 7 ημέρες ("Δευτέρα", "Τρίτη", "Τετάρτη", "Πέμπτη", "Παρασκευή", "Σάββατο", "Κυριακή") και μέσα σε κάθε ημέρα τα 5 γεύματα: "Πρωινό", "Σνακ 1", "Μεσημεριανό", "Σνακ 2", "Βραδινό".`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        }
-      );
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-      const parsed = JSON.parse(rawText);
+      const rawText = await callMealAi(prompt, apiKey);
+      const parsed = parseAiJson(rawText, {});
 
       const cleanedWeek = {};
       DAYS.forEach((d) => {
@@ -1290,18 +1468,17 @@ function NutriCharisPlatform() {
       );
       await supabase.from('clients').update({ meal_plan: cleanedWeek }).eq('id', activeClientObj.id);
       showToast('✨ Το εβδομαδιαίο πλάνο 7 ημερών δημιουργήθηκε!');
-    } catch {
-      showToast('⚠️ Σφάλμα κατά τη δημιουργία πλάνου 7 ημερών.');
+    } catch (err) {
+      if (!apiKey) setShowApiKeyModal(true);
+      showToast(`⚠️ ${err?.message || 'Σφάλμα κατά τη δημιουργία πλάνου 7 ημερών.'}`);
     } finally {
       setAiFullWeekLoading(false);
     }
   };
 
   const handleExactFdaAnalysis = async () => {
-    if (!apiKey) {
-      setShowApiKeyModal(true);
-      return;
-    }
+    if (!activeClientObj) return;
+    if (fdaLoading) return;
     const dayPlan = activeClientObj?.meal_plan?.[selectedDay] || {};
     const summary = MEAL_TYPES.map((m) => `${m.key}: ${dayPlan[m.key] || 'Κενό'}`).join('\n');
 
@@ -1313,25 +1490,17 @@ ${summary}
 Επίστρεψε ΑΠΟΚΛΕΙΣΤΙΚΑ έγκυρο JSON:
 {"kcal":1650,"protein":105,"carbs":145,"fat":58,"micros":{"potassium":3100,"iron":13.5,"calcium":920,"fiber":25.4,"magnesium":340,"sodium":1650,"vitC":85,"vitD":6.5,"vitB12":3.1,"zinc":9.8,"omega3":1.4}}`;
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' }
-          })
-        }
-      );
-      const data = await res.json();
-      const parsed = JSON.parse(data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
-      if (parsed?.kcal) {
+      const rawText = await callMealAi(prompt, apiKey);
+      const parsed = parseAiJson(rawText, {});
+      if (parsed?.kcal != null && Number.isFinite(Number(parsed.kcal))) {
         setFdaAiOverride(parsed);
         showToast(`✓ Ακριβής ανάλυση FDA ολοκληρώθηκε για ${selectedDay}`);
+      } else {
+        showToast('⚠️ Μη έγκυρη απόκριση FDA ανάλυσης.');
       }
-    } catch {
-      showToast('⚠️ Σφάλμα κατά την ανάλυση FDA.');
+    } catch (err) {
+      if (!apiKey) setShowApiKeyModal(true);
+      showToast(`⚠️ ${err?.message || 'Σφάλμα κατά την ανάλυση FDA.'}`);
     } finally {
       setFdaLoading(false);
     }
@@ -1546,15 +1715,23 @@ ${summary}
 
   const handleDeleteAppointment = async (id) => {
     if (!window.confirm('Διαγραφή αυτού του ραντεβού;')) return;
-    const user = await requireSessionUser();
-    const row = appointments.find((a) => a.id === id);
-    if (row?.dietitian_id && row.dietitian_id !== user.id && !isAdmin) {
-      showToast('⚠️ Δεν έχετε δικαίωμα διαγραφής αυτού του ραντεβού.');
-      return;
+    try {
+      const user = await requireSessionUser();
+      const row = appointments.find((a) => a.id === id);
+      if (row?.dietitian_id && row.dietitian_id !== user.id && !isAdmin) {
+        showToast('⚠️ Δεν έχετε δικαίωμα διαγραφής αυτού του ραντεβού.');
+        return;
+      }
+      const { error } = await supabase.from('appointments').delete().eq('id', id);
+      if (error) {
+        showToast(`⚠️ ${error.message}`);
+        return;
+      }
+      setAppointments((prev) => prev.filter((a) => a.id !== id));
+      showToast('🗑️ Το ραντεβού διαγράφηκε.');
+    } catch (err) {
+      showToast(`⚠️ ${err?.message || 'Αποτυχία διαγραφής ραντεβού.'}`);
     }
-    await supabase.from('appointments').delete().eq('id', id);
-    setAppointments((prev) => prev.filter((a) => a.id !== id));
-    showToast('🗑️ Το ραντεβού διαγράφηκε.');
   };
 
   const handleAddMeasurement = async (e) => {
@@ -1638,46 +1815,126 @@ ${summary}
   }
 
   if (authMode === 'recovery') {
+    const strength = getPasswordStrength(newPasswordInput);
+    const passwordsMatch =
+      confirmPasswordInput.length > 0 && newPasswordInput === confirmPasswordInput;
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-        <div className="luxury-card" style={{ width: '100%', maxWidth: '420px', padding: '28px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+      <div
+        className="glass-modal-backdrop"
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px'
+        }}
+      >
+        <div className="luxury-card glass-elevated" style={{ width: '100%', maxWidth: '440px', padding: '28px', animation: 'fadeInSlide 0.28s ease' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
             <BrandLogo size={42} />
             <div>
-              <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800' }}>Ορισμός Νέου Κωδικού</h2>
-              <div style={{ fontSize: '12px', color: '#94a3b8' }}>Εισάγετε τον νέο σας κωδικό πρόσβασης</div>
+              <h2 className="font-display" style={{ margin: 0, fontSize: '20px', fontWeight: '800' }}>
+                Ορισμός Νέου Κωδικού
+              </h2>
+              <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                NutriCharis • Ασφαλής επαναφορά πρόσβασης
+              </div>
             </div>
           </div>
+          <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: '#94a3b8', lineHeight: 1.55 }}>
+            Ορίστε νέο κωδικό. Μετά την αποθήκευση θα συνδεθείτε αυτόματα στο dashboard.
+          </p>
           {authError && (
-            <div style={{ padding: '10px 14px', borderRadius: '11px', background: 'rgba(239,68,68,0.14)', color: '#fca5a5', fontSize: '12.5px', marginBottom: '12px' }}>
+            <div className="status-badge status-badge--danger" style={{ display: 'block', marginBottom: '12px', borderRadius: '11px', padding: '10px 14px' }}>
               {authError}
             </div>
           )}
           <form onSubmit={handlePasswordUpdateSubmit} style={{ display: 'grid', gap: '13px' }}>
-            <input
-              className="luxury-input"
-              type="password"
-              required
-              minLength={6}
-              value={newPasswordInput}
-              onChange={(e) => setNewPasswordInput(e.target.value)}
-              placeholder="Νέος κωδικός (τουλάχιστον 6 χαρακτήρες)"
-            />
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
+                Νέος Κωδικός *
+              </label>
+              <input
+                className="luxury-input"
+                type="password"
+                required
+                minLength={6}
+                autoComplete="new-password"
+                value={newPasswordInput}
+                onChange={(e) => setNewPasswordInput(e.target.value)}
+                placeholder="Τουλάχιστον 6 χαρακτήρες"
+                disabled={passwordUpdating}
+              />
+              {newPasswordInput.length > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <div
+                    style={{
+                      height: '6px',
+                      borderRadius: '99px',
+                      background: 'rgba(255,255,255,0.08)',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: `${strength.pct}%`,
+                        height: '100%',
+                        background: strength.color,
+                        transition: 'width 0.25s ease, background 0.25s ease'
+                      }}
+                    />
+                  </div>
+                  <div style={{ marginTop: '5px', fontSize: '11px', color: strength.color, fontWeight: 700 }}>
+                    Ισχύς: {strength.label}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '11px', color: '#94a3b8', marginBottom: '4px', fontWeight: 600 }}>
+                Επιβεβαίωση Κωδικού *
+              </label>
+              <input
+                className="luxury-input"
+                type="password"
+                required
+                minLength={6}
+                autoComplete="new-password"
+                value={confirmPasswordInput}
+                onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                placeholder="Επαναλάβετε τον νέο κωδικό"
+                disabled={passwordUpdating}
+              />
+              {confirmPasswordInput.length > 0 && (
+                <div
+                  style={{
+                    marginTop: '5px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: passwordsMatch ? '#34d399' : '#f87171'
+                  }}
+                >
+                  {passwordsMatch ? '✓ Οι κωδικοί ταιριάζουν' : 'Οι κωδικοί δεν ταιριάζουν ακόμη'}
+                </div>
+              )}
+            </div>
             <button
               type="submit"
+              className="btn-emerald"
+              disabled={passwordUpdating || newPasswordInput.length < 6 || !passwordsMatch}
               style={{
                 padding: '13px',
-                background: 'linear-gradient(135deg, #10b981, #059669)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '12px',
-                fontWeight: '800',
-                cursor: 'pointer'
+                opacity: passwordUpdating || newPasswordInput.length < 6 || !passwordsMatch ? 0.55 : 1,
+                cursor: passwordUpdating || newPasswordInput.length < 6 || !passwordsMatch ? 'not-allowed' : 'pointer'
               }}
             >
-              ✓ Αποθήκευση Νέου Κωδικού
+              {passwordUpdating ? 'Αποθήκευση…' : '✓ Αποθήκευση Νέου Κωδικού'}
             </button>
           </form>
+          <div style={{ marginTop: '14px' }}>
+            <MedicalFooter compact onOpenLegal={setLegalDoc} />
+          </div>
+          {legalDoc && <LegalModal docKey={legalDoc} onClose={() => setLegalDoc(null)} />}
         </div>
       </div>
     );
@@ -1902,20 +2159,18 @@ ${summary}
 
               <button
                 type="submit"
+                className="btn-emerald"
+                disabled={authSubmitting}
                 style={{
                   marginTop: '4px',
                   padding: '13px',
-                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '13px',
-                  fontWeight: '800',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  boxShadow: '0 10px 25px rgba(16, 185, 129, 0.35)'
+                  opacity: authSubmitting ? 0.65 : 1,
+                  cursor: authSubmitting ? 'wait' : 'pointer'
                 }}
               >
-                {authMode === 'login'
+                {authSubmitting
+                  ? 'Παρακαλώ περιμένετε…'
+                  : authMode === 'login'
                   ? 'Είσοδος στην Πλατφόρμα →'
                   : authMode === 'register'
                   ? 'Δημιουργία Φακέλου & Είσοδος →'
@@ -2106,19 +2361,16 @@ ${summary}
 
             <button
               type="button"
-              onClick={() => supabase.auth.signOut()}
+              onClick={handleLogout}
+              className="btn-ghost-danger"
+              aria-label="Αποσύνδεση"
               style={{
                 padding: '6px 9px',
-                background: 'rgba(239, 68, 68, 0.12)',
-                color: '#fca5a5',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                borderRadius: '9px',
                 fontSize: '11px',
-                fontWeight: '700',
-                cursor: 'pointer'
+                fontWeight: '700'
               }}
             >
-              Έξοδος
+              Αποσύνδεση
             </button>
           </div>
         </div>
@@ -3233,10 +3485,10 @@ ${summary}
             )}
 
             <div style={{ display: 'grid', gap: '9px' }}>
-              {appointments.length === 0 ? (
+              {visibleAppointments.length === 0 ? (
                 <div style={{ color: '#94a3b8', fontSize: '13px' }}>Δεν υπάρχουν καταχωρημένα ραντεβού.</div>
               ) : (
-                appointments.map((a) => {
+                visibleAppointments.map((a) => {
                   const cl = clients.find(
                     (c) =>
                       String(c.id) === String(a.client_id || a.client) ||
@@ -3276,7 +3528,7 @@ ${summary}
                             💬 WhatsApp
                           </a>
                         )}
-                        <span style={{ fontSize: '10.5px', padding: '4px 9px', borderRadius: '99px', background: 'rgba(16,185,129,0.16)', color: '#6ee7b7', fontWeight: '700' }}>
+                        <span className="status-badge status-badge--success">
                           {a.status || 'Προγραμματισμένο'}
                         </span>
                         {isAdmin && (
@@ -3452,11 +3704,10 @@ ${summary}
       {/* FULL-SCREEN PDF PRINT STUDIO MODAL */}
       {showPdfModal && activeClientObj && (
         <div
+          className="glass-modal-backdrop no-print"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 6, 5, 0.92)',
-            backdropFilter: 'blur(14px)',
             zIndex: 400,
             overflowY: 'auto',
             padding: '14px'
@@ -3558,12 +3809,11 @@ ${summary}
       {/* MODAL: ΕΒΔΟΜΑΔΙΑΙΑ ΠΡΟΤΥΠΑ ΔΙΑΙΤΟΛΟΓΙΩΝ */}
       {showTemplatesModal && isAdmin && activeClientObj && (
         <div
-          className="no-print"
+          className="no-print glass-modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 6, 5, 0.85)',
-            backdropFilter: 'blur(10px)',
+
             zIndex: 365,
             display: 'flex',
             alignItems: 'center',
@@ -3623,12 +3873,11 @@ ${summary}
       {/* MODAL: ΛΙΣΤΑ ΣΟΥΠΕΡ ΜΑΡΚΕΤ */}
       {showShoppingModal && activeClientObj && (
         <div
-          className="no-print"
+          className="no-print glass-modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 6, 5, 0.85)',
-            backdropFilter: 'blur(10px)',
+
             zIndex: 360,
             display: 'flex',
             alignItems: 'center',
@@ -3683,12 +3932,11 @@ ${summary}
       {/* MODAL: ΕΠΕΞΕΡΓΑΣΙΑ ΚΕΛΙΟΥ ΓΕΥΜΑΤΟΣ */}
       {editingCell && isAdmin && (
         <div
-          className="no-print"
+          className="no-print glass-modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 6, 5, 0.85)',
-            backdropFilter: 'blur(10px)',
+
             zIndex: 350,
             display: 'flex',
             alignItems: 'center',
@@ -3755,12 +4003,11 @@ ${summary}
       {/* MODAL: ΠΛΗΡΗΣ ΕΠΕΞΕΡΓΑΣΙΑ ΦΑΚΕΛΟΥ ΠΕΛΑΤΗ */}
       {editingClient && isAdmin && (
         <div
-          className="no-print"
+          className="no-print glass-modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 6, 5, 0.85)',
-            backdropFilter: 'blur(10px)',
+
             zIndex: 350,
             overflowY: 'auto',
             padding: '16px 12px'
@@ -3907,12 +4154,11 @@ ${summary}
       {/* MODAL: GEMINI API KEY SETTINGS */}
       {showApiKeyModal && isAdmin && (
         <div
-          className="no-print"
+          className="no-print glass-modal-backdrop"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 6, 5, 0.85)',
-            backdropFilter: 'blur(10px)',
+
             zIndex: 350,
             display: 'flex',
             alignItems: 'center',

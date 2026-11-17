@@ -44,11 +44,10 @@ export default function LegalModal({ docKey, onClose }) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="legal-modal-title"
+      className="glass-modal-backdrop"
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(3, 6, 5, 0.88)',
-        backdropFilter: 'blur(8px)',
         zIndex: 600,
         display: 'flex',
         alignItems: 'center',
@@ -58,16 +57,14 @@ export default function LegalModal({ docKey, onClose }) {
       onClick={onClose}
     >
       <div
-        className="luxury-card"
+        className="luxury-card glass-elevated"
         style={{
           width: '100%',
           maxWidth: '640px',
           maxHeight: '85vh',
           overflow: 'auto',
           padding: '24px',
-          background: '#0b1612',
-          border: '1px solid rgba(52,211,153,0.25)',
-          borderRadius: '16px'
+          animation: 'fadeInSlide 0.22s ease'
         }}
         onClick={(e) => e.stopPropagation()}
       >

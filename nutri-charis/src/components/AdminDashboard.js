@@ -210,7 +210,15 @@ export default function AdminDashboard({ onLogout }) {
                 aiFoodAnalysis={aiFoodAnalysis}
               />
             )}
-            {activeTab === 'appointments' && <div className="p-8 text-center text-slate-500 bg-white rounded-xl shadow-sm border border-slate-200">Σύστημα Ραντεβού (Επόμενο βήμα)</div>}
+            {activeTab === 'appointments' && (
+              <div className="p-8 text-center bg-white rounded-xl shadow-sm border border-slate-200">
+                <p className="text-slate-700 font-semibold mb-2">Ραντεβού</p>
+                <p className="text-slate-500 text-sm m-0">
+                  Το ενεργό σύστημα ραντεβού βρίσκεται στην κύρια εφαρμογή NutriCharis (καρτέλα «Ραντεβού»).
+                  Αυτό το legacy Admin Portal δεν υποστηρίζει πλέον ξεχωριστό calendar.
+                </p>
+              </div>
+            )}
           </>
         )}
       </main>

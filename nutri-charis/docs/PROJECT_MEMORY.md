@@ -35,4 +35,5 @@
 - Remaining `npm audit` highs are mostly CRA/react-scripts transitive (dev/build-time).
 
 ## Change log
+- 2026-11-17: E2E bug audit + UI polish — password recovery (`PASSWORD_RECOVERY` + `type=recovery` URL/hash with lazy init + hashchange, confirm + strength meter, auto-dashboard after `updateUser`), hardened logout/session clear, AI via `/api/generate-meals` with local key fallback, appointment visibility filter + delete error handling, glass modal/badge CSS level-up, legacy Admin appointments stub clarified. Browser QA: recovery form + strength/match + Privacy modal OK; `npm run build` 0 errors.
 - 2026-11-17: Full cyber/legal hardening — headers, RLS migration, IDOR guards, rate limits, GDPR Art.9/17/20 UI, nutrition-math extraction, docs, env secret lockdown, adversarial browser QA.

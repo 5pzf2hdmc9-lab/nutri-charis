@@ -84,6 +84,26 @@ h1, h2, h3, .font-display {
     inset 0 1px 0 0 rgba(255, 255, 255, 0.09),
     0 20px 45px -15px rgba(0, 0, 0, 0.72);
   border-radius: 22px;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+.luxury-card:hover {
+  border-color: rgba(52, 211, 153, 0.22);
+}
+
+.glass-elevated {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.12),
+    0 28px 60px -18px rgba(0, 0, 0, 0.82),
+    0 0 0 1px rgba(16, 185, 129, 0.08);
+}
+
+.glass-modal-backdrop {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 20%, rgba(16, 185, 129, 0.12), transparent 55%),
+    rgba(3, 6, 5, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .luxury-input {
@@ -98,12 +118,93 @@ h1, h2, h3, .font-display {
   font-size: 14px;
   font-family: 'Inter', sans-serif;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.luxury-input:hover {
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .luxury-input:focus {
   border-color: #10b981;
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+  background: rgba(6, 12, 10, 0.96);
+}
+
+.luxury-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-emerald {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  border: none;
+  border-radius: 13px;
+  font-weight: 800;
+  font-size: 14px;
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.btn-emerald:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(16, 185, 129, 0.42);
+  filter: brightness(1.04);
+}
+
+.btn-emerald:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-ghost-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.btn-ghost-danger:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 99px;
+  letter-spacing: 0.01em;
+}
+
+.status-badge--success {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.status-badge--danger {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.status-badge--warn {
+  background: rgba(251, 191, 36, 0.14);
+  color: #fde68a;
+  border: 1px solid rgba(251, 191, 36, 0.32);
+}
+
+.status-badge--info {
+  background: rgba(56, 189, 248, 0.14);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.32);
 }
 
 .meal-cell-card {
