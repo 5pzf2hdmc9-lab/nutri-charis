@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
+import { FDA_MICROS, clampNum, parseStrictNum, calculateMetabolism, fdaPercent } from './lib/nutrition-math';
+import { checkRateLimit, authRateKey, resetRateLimit } from './lib/rateLimit';
+import { requireSessionUser, assertClientAccess, sanitizeText } from './lib/authAccess';
+import LegalModal from './components/LegalModal';
+import MedicalFooter from './components/MedicalFooter';
+import GdprConsentFields from './components/GdprConsentFields';
+import GdprDataActions from './components/GdprDataActions';
 
 // ============================================================================
 // ΑΥΣΤΗΡΗ ΛΙΣΤΑ ADMIN
@@ -21,20 +28,6 @@ const MEAL_TYPES = [
   { key: 'Μεσημεριανό', label: '3. Μεσημεριανό', badge: 'ΚΥΡΙΩΣ', accent: '#38bdf8' },
   { key: 'Σνακ 2', label: '4. Σνακ 2', badge: 'ΑΠΟΓΕΥΜΑ', accent: '#a78bfa' },
   { key: 'Βραδινό', label: '5. Βραδινό', badge: 'ΒΡΑΔΥ', accent: '#fb7185' }
-];
-
-const FDA_MICROS = [
-  { key: 'potassium', label: 'Κάλιο (K)', unit: 'mg', dv: 4700, color: '#34d399' },
-  { key: 'iron', label: 'Σίδηρος (Fe)', unit: 'mg', dv: 18, color: '#f87171' },
-  { key: 'calcium', label: 'Ασβέστιο (Ca)', unit: 'mg', dv: 1300, color: '#60a5fa' },
-  { key: 'fiber', label: 'Φυτικές Ίνες', unit: 'g', dv: 28, color: '#fbbf24' },
-  { key: 'magnesium', label: 'Μαγνήσιο (Mg)', unit: 'mg', dv: 420, color: '#a78bfa' },
-  { key: 'sodium', label: 'Νάτριο (Na)', unit: 'mg', dv: 2300, color: '#fb923c' },
-  { key: 'vitC', label: 'Βιταμίνη C', unit: 'mg', dv: 90, color: '#facc15' },
-  { key: 'vitD', label: 'Βιταμίνη D', unit: 'mcg', dv: 20, color: '#38bdf8' },
-  { key: 'vitB12', label: 'Βιταμίνη B12', unit: 'mcg', dv: 2.4, color: '#f472b6' },
-  { key: 'zinc', label: 'Ψευδάργυρος (Zn)', unit: 'mg', dv: 11, color: '#2dd4bf' },
-  { key: 'omega3', label: 'Ωμέγα-3', unit: 'g', dv: 1.6, color: '#818cf8' }
 ];
 
 const ACTIVITY_FACTORS = [
@@ -85,12 +78,6 @@ const DEFAULT_WEEK_TEMPLATES = [
   }
 ];
 
-function clampNum(val, min, max, fallback) {
-  const n = parseFloat(val);
-  if (Number.isNaN(n) || !Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
-}
-
 function cleanMealText(raw) {
   if (!raw || typeof raw !== 'string') return '';
   return raw
@@ -99,37 +86,6 @@ function cleanMealText(raw) {
     .replace(/\s+,/g, ',')
     .replace(/^[•\-–]\s*/gm, '')
     .trim();
-}
-
-function calculateMetabolism({ gender = 'female', age = 30, weight = 65, height = 165, activity = 1.375, bodyFat = null }) {
-  const w = clampNum(weight, 25, 350, 65);
-  const h = clampNum(height, 90, 240, 165);
-  const a = clampNum(age, 5, 115, 30);
-  const act = clampNum(activity, 1.1, 2.4, 1.375);
-  const bf = bodyFat !== null && bodyFat !== '' && !Number.isNaN(parseFloat(bodyFat))
-    ? clampNum(bodyFat, 3, 70, null)
-    : null;
-
-  const mifflinBmr =
-    gender === 'male'
-      ? 10 * w + 6.25 * h - 5 * a + 5
-      : 10 * w + 6.25 * h - 5 * a - 161;
-
-  const harrisBmr =
-    gender === 'male'
-      ? 88.362 + 13.397 * w + 4.799 * h - 5.677 * a
-      : 447.593 + 9.247 * w + 3.098 * h - 4.33 * a;
-
-  const estBf = bf !== null ? bf : gender === 'male' ? 18 : 26;
-  const lbm = +(w * (1 - estBf / 100)).toFixed(1);
-  const katchBmr = 370 + 21.6 * lbm;
-  const bmi = h > 0 ? +(w / ((h / 100) * (h / 100))).toFixed(1) : 0;
-
-  return {
-    mifflin: { bmr: Math.round(mifflinBmr), tdee: Math.round(mifflinBmr * act), bmi },
-    harris: { bmr: Math.round(harrisBmr), tdee: Math.round(harrisBmr * act), bmi },
-    katch: { bmr: Math.round(katchBmr), tdee: Math.round(katchBmr * act), bmi, lbm, bfUsed: estBf }
-  };
 }
 
 function analyzeDayNutrition(dayPlan = {}, drinkingWaterStr = '1.5 - 2 λίτρα') {
@@ -651,6 +607,14 @@ function NutriCharisPlatform() {
   const [authPassword, setAuthPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [gdprAccepted, setGdprAccepted] = useState(false);
+  const [art9Accepted, setArt9Accepted] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [legalDoc, setLegalDoc] = useState(null);
+  const [newClientGdpr, setNewClientGdpr] = useState(false);
+  const [newClientArt9, setNewClientArt9] = useState(false);
+  const [newClientTerms, setNewClientTerms] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState('');
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [authName, setAuthName] = useState('');
   const [authPhone, setAuthPhone] = useState('');
@@ -806,28 +770,66 @@ function NutriCharisPlatform() {
   }, [session, isAdmin]);
 
   const loadAllData = async () => {
-    const { data: clientRows } = await supabase
-      .from('clients')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (clientRows) {
-      const userEmail = (session?.user?.email || '').trim().toLowerCase();
-      const visible = isAdmin
-        ? clientRows
-        : clientRows.filter((c) => (c.email || '').trim().toLowerCase() === userEmail);
-
-      setClients(visible);
-      if (visible.length > 0 && !visible.some((c) => c.id === activeClientId)) {
-        setActiveClientId(visible[0].id);
+    setDataLoading(true);
+    setDataError('');
+    try {
+      // Identity from Auth session only — never trust body/URL userId.
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userData?.user?.id) {
+        setDataError('Η συνεδρία έληξε. Παρακαλώ συνδεθείτε ξανά.');
+        setClients([]);
+        return;
       }
+      const uid = userData.user.id;
+      const userEmail = String(userData.user.email || '')
+        .trim()
+        .toLowerCase();
+
+      // RLS enforces row ownership; client filter is defense-in-depth (IDOR).
+      let query = supabase.from('clients').select('*').order('created_at', { ascending: false });
+      if (!isAdmin) {
+        query = query.or(`user_id.eq.${uid},email.eq.${userEmail}`);
+      } else {
+        query = query.or(`dietitian_id.eq.${uid},dietitian_id.is.null`);
+      }
+
+      const { data: clientRows, error: clientsErr } = await query;
+      if (clientsErr) {
+        setDataError(clientsErr.message || 'Αποτυχία φόρτωσης φακέλων.');
+      } else if (clientRows) {
+        const visible = isAdmin
+          ? clientRows.filter((c) => !c.dietitian_id || c.dietitian_id === uid)
+          : clientRows.filter(
+              (c) =>
+                c.user_id === uid ||
+                String(c.email || '')
+                  .trim()
+                  .toLowerCase() === userEmail
+            );
+        setClients(visible);
+        if (visible.length > 0 && !visible.some((c) => c.id === activeClientId)) {
+          setActiveClientId(visible[0].id);
+        } else if (visible.length === 0) {
+          setActiveClientId(null);
+        }
+      }
+
+      const { data: apptRows } = await supabase
+        .from('appointments')
+        .select('*')
+        .order('date', { ascending: true });
+      if (apptRows) setAppointments(apptRows);
+
+      const { data: measRows } = await supabase
+        .from('measurements')
+        .select('*')
+        .order('date', { ascending: true });
+      if (measRows) setMeasurements(measRows);
+    } catch (err) {
+      setDataError(err?.message || 'Σφάλμα φόρτωσης δεδομένων.');
+    } finally {
+      setDataLoading(false);
     }
-
-    const { data: apptRows } = await supabase.from('appointments').select('*').order('date', { ascending: true });
-    if (apptRows) setAppointments(apptRows);
-
-    const { data: measRows } = await supabase.from('measurements').select('*').order('date', { ascending: true });
-    if (measRows) setMeasurements(measRows);
   };
 
   const filteredClients = useMemo(() => {
@@ -963,14 +965,23 @@ function NutriCharisPlatform() {
     localStorage.setItem('nutricharis_water_glasses', JSON.stringify(next));
   };
 
-  // Auth Handlers
+  // Auth Handlers (rate-limited; identity always from Supabase Auth)
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError('');
     setAuthSuccess('');
 
+    const emailClean = sanitizeText(authEmail, 180).trim().toLowerCase();
+    const action =
+      authMode === 'forgot' ? 'forgot' : authMode === 'register' ? 'signup' : 'login';
+    const rl = checkRateLimit(authRateKey(action, emailClean), 8, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      setAuthError(`Πάρα πολλές προσπάθειες. Δοκιμάστε ξανά σε ${rl.retryAfterSec} δευτερόλεπτα.`);
+      return;
+    }
+
     if (authMode === 'forgot') {
-      const { error } = await supabase.auth.resetPasswordForEmail(authEmail.trim(), {
+      const { error } = await supabase.auth.resetPasswordForEmail(emailClean, {
         redirectTo: window.location.origin
       });
       if (error) setAuthError(error.message);
@@ -980,46 +991,66 @@ function NutriCharisPlatform() {
 
     if (authMode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({
-        email: authEmail.trim(),
+        email: emailClean,
         password: authPassword
       });
       if (error) setAuthError('Λάθος email ή κωδικός πρόσβασης.');
+      else resetRateLimit(authRateKey('login', emailClean));
     } else if (authMode === 'register') {
-      if (!gdprAccepted) {
-        setAuthError('Παρακαλούμε αποδεχτείτε την πολιτική προστασίας δεδομένων (GDPR).');
+      if (!gdprAccepted || !art9Accepted || !termsAccepted) {
+        setAuthError('Απαιτείται ρητή συγκατάθεση GDPR, Άρθρου 9 (δεδομένα υγείας) και Όρων Χρήσης.');
+        return;
+      }
+      const age = parseStrictNum(authAge, 5, 115);
+      const weight = parseStrictNum(authWeight, 25, 350);
+      const height = parseStrictNum(authHeight, 90, 240);
+      if (Number.isNaN(age) || Number.isNaN(weight) || Number.isNaN(height)) {
+        setAuthError('Μη έγκυρα ανθρωπομετρικά (ηλικία 5–115, βάρος 25–350kg, ύψος 90–240cm).');
         return;
       }
       const { data, error } = await supabase.auth.signUp({
-        email: authEmail.trim(),
+        email: emailClean,
         password: authPassword
       });
       if (error) {
         setAuthError(error.message);
         return;
       }
-      if (data?.user) {
-        await supabase.from('clients').insert([
+      if (data?.user?.id) {
+        const consentAt = new Date().toISOString();
+        const { error: insertErr } = await supabase.from('clients').insert([
           {
-            name: authName.trim() || authEmail.split('@')[0],
-            email: authEmail.trim(),
-            phone: authPhone.trim(),
-            gender: authGender,
-            age: clampNum(authAge, 5, 115, 30),
-            weight: clampNum(authWeight, 25, 350, 65),
-            height: clampNum(authHeight, 90, 240, 165),
-            goal: authGoal.trim() || 'Ισορροπημένη διατροφή',
+            name: sanitizeText(authName, 120) || emailClean.split('@')[0],
+            email: emailClean,
+            phone: sanitizeText(authPhone, 40),
+            gender: authGender === 'male' ? 'male' : 'female',
+            age,
+            weight,
+            height,
+            goal: sanitizeText(authGoal, 200) || 'Ισορροπημένη διατροφή',
+            user_id: data.user.id,
+            gdpr_consent_at: consentAt,
+            art9_consent_at: consentAt,
+            terms_accepted_at: consentAt,
             questionnaire: {
               bmrFormula: 'mifflin',
               activityLevel: Number(authActivity) || 1.375,
               calorieDelta: 0,
               waterIntake: '1.5 - 2 λίτρα',
-              healthOther: authAllergies.trim(),
+              healthOther: sanitizeText(authAllergies, 300),
               selectedMicros: ['potassium', 'iron', 'calcium', 'fiber'],
-              gdprAcceptedAt: new Date().toISOString()
+              gdprAcceptedAt: consentAt,
+              art9AcceptedAt: consentAt,
+              termsAcceptedAt: consentAt
             },
             meal_plan: {}
           }
         ]);
+        if (insertErr) {
+          setAuthError(insertErr.message || 'Αποτυχία δημιουργίας φακέλου.');
+          return;
+        }
+        resetRateLimit(authRateKey('signup', emailClean));
         showToast('✓ Ο φάκελος & ο λογαριασμός δημιουργήθηκαν!');
       }
     }
@@ -1044,13 +1075,19 @@ function NutriCharisPlatform() {
 
   const handleSwitchClientFormula = async (formula) => {
     if (!activeClientObj) return;
-    const updatedQ = { ...(activeClientObj.questionnaire || {}), bmrFormula: formula };
-    setClients((prev) =>
-      prev.map((c) => (c.id === activeClientObj.id ? { ...c, questionnaire: updatedQ } : c))
-    );
-    await supabase.from('clients').update({ questionnaire: updatedQ }).eq('id', activeClientObj.id);
-    const label = formula === 'mifflin' ? 'Mifflin-St Jeor' : formula === 'harris' ? 'Harris-Benedict' : 'Katch-McArdle';
-    showToast(`✓ Ενεργοποιήθηκε: ${label}`);
+    try {
+      const user = await requireSessionUser();
+      assertClientAccess(activeClientObj, user, isAdmin);
+      const updatedQ = { ...(activeClientObj.questionnaire || {}), bmrFormula: formula };
+      setClients((prev) =>
+        prev.map((c) => (c.id === activeClientObj.id ? { ...c, questionnaire: updatedQ } : c))
+      );
+      await supabase.from('clients').update({ questionnaire: updatedQ }).eq('id', activeClientObj.id);
+      const label = formula === 'mifflin' ? 'Mifflin-St Jeor' : formula === 'harris' ? 'Harris-Benedict' : 'Katch-McArdle';
+      showToast(`✓ Ενεργοποιήθηκε: ${label}`);
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
+    }
   };
 
   const handleChangeCalorieDelta = async (deltaVal) => {
@@ -1302,48 +1339,107 @@ ${summary}
 
   const handleCreateClient = async (e) => {
     e.preventDefault();
+    if (!isAdmin) {
+      showToast('⚠️ Μόνο ο διαιτολόγος μπορεί να δημιουργήσει φάκελο πελάτη.');
+      return;
+    }
     if (!newClientName.trim()) return;
-    const payload = {
-      name: newClientName.trim(),
-      email: newClientEmail.trim(),
-      phone: newClientPhone.trim(),
-      gender: newClientGender,
-      age: clampNum(newClientAge, 5, 115, 30),
-      weight: clampNum(newClientWeight, 25, 350, 65),
-      height: clampNum(newClientHeight, 90, 240, 165),
-      goal: newClientGoal.trim(),
-      questionnaire: {
-        bmrFormula: 'mifflin',
-        activityLevel: 1.375,
-        calorieDelta: 0,
-        waterIntake: '1.5 - 2 λίτρα',
-        selectedMicros: ['potassium', 'iron', 'calcium', 'fiber']
-      },
-      meal_plan: {}
-    };
-    const { data, error } = await supabase.from('clients').insert([payload]).select();
-    if (!error && data?.[0]) {
-      setClients((prev) => [data[0], ...prev]);
-      setActiveClientId(data[0].id);
-      setShowNewClientForm(false);
-      setNewClientName('');
-      setNewClientEmail('');
-      setNewClientPhone('');
-      setActiveTab('plan');
-      showToast(`✓ Δημιουργήθηκε ο φάκελος: ${data[0].name}`);
+    if (!newClientGdpr || !newClientArt9 || !newClientTerms) {
+      showToast('⚠️ Απαιτείται ρητή συγκατάθεση GDPR / Άρθρου 9 / Όρων πριν την αποθήκευση.');
+      return;
+    }
+    const age = parseStrictNum(newClientAge, 5, 115);
+    const weight = parseStrictNum(newClientWeight, 25, 350);
+    const height = parseStrictNum(newClientHeight, 90, 240);
+    if (Number.isNaN(age) || Number.isNaN(weight) || Number.isNaN(height)) {
+      showToast('⚠️ Μη έγκυρα δεδομένα (ηλικία/βάρος/ύψος εκτός ορίων).');
+      return;
+    }
+    try {
+      const user = await requireSessionUser();
+      const consentAt = new Date().toISOString();
+      const payload = {
+        name: sanitizeText(newClientName, 120),
+        email: sanitizeText(newClientEmail, 180).toLowerCase(),
+        phone: sanitizeText(newClientPhone, 40),
+        gender: newClientGender === 'male' ? 'male' : 'female',
+        age,
+        weight,
+        height,
+        goal: sanitizeText(newClientGoal, 200),
+        dietitian_id: user.id,
+        gdpr_consent_at: consentAt,
+        art9_consent_at: consentAt,
+        terms_accepted_at: consentAt,
+        questionnaire: {
+          bmrFormula: 'mifflin',
+          activityLevel: 1.375,
+          calorieDelta: 0,
+          waterIntake: '1.5 - 2 λίτρα',
+          selectedMicros: ['potassium', 'iron', 'calcium', 'fiber'],
+          gdprAcceptedAt: consentAt,
+          art9AcceptedAt: consentAt,
+          termsAcceptedAt: consentAt
+        },
+        meal_plan: {}
+      };
+      const { data, error } = await supabase.from('clients').insert([payload]).select();
+      if (error) {
+        showToast(`⚠️ ${error.message}`);
+        return;
+      }
+      if (data?.[0]) {
+        setClients((prev) => [data[0], ...prev]);
+        setActiveClientId(data[0].id);
+        setShowNewClientForm(false);
+        setNewClientName('');
+        setNewClientEmail('');
+        setNewClientPhone('');
+        setNewClientGdpr(false);
+        setNewClientArt9(false);
+        setNewClientTerms(false);
+        setActiveTab('plan');
+        showToast(`✓ Δημιουργήθηκε ο φάκελος: ${data[0].name}`);
+      }
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
     }
   };
 
-  const handleDeleteClient = async (e, client) => {
-    e.stopPropagation();
-    if (!window.confirm(`Οριστική διαγραφή του φακέλου "${client.name}";`)) return;
-    await supabase.from('clients').delete().eq('id', client.id);
+  const handlePermanentDeleteClient = async (client) => {
+    const user = await requireSessionUser();
+    assertClientAccess(client, user, isAdmin);
+    // Cascade-related rows first (best-effort); RLS still gates each table.
+    await supabase.from('appointments').delete().eq('client_id', client.id);
+    await supabase.from('measurements').delete().eq('client_id', client.id);
+    const { error } = await supabase.from('clients').delete().eq('id', client.id);
+    if (error) throw new Error(error.message);
     const remaining = clients.filter((c) => c.id !== client.id);
     setClients(remaining);
     if (activeClientId === client.id) {
       setActiveClientId(remaining[0]?.id || null);
     }
-    showToast(`🗑️ Διαγράφηκε ο φάκελος: ${client.name}`);
+    showToast(`🗑️ Οριστική διαγραφή φακέλου (GDPR Άρθρο 17): ${client.name}`);
+  };
+
+  const handleDeleteClient = async (e, client) => {
+    e.stopPropagation();
+    const first = window.confirm(
+      `Επιβεβαίωση 1/2 — Οριστική διαγραφή φακέλου "${client.name}"; (GDPR Άρθρο 17)`
+    );
+    if (!first) return;
+    const typed = window.prompt(
+      `Επιβεβαίωση 2/2 — Πληκτρολογήστε ακριβώς το όνομα «${client.name}» για οριστική διαγραφή:`
+    );
+    if (String(typed || '').trim() !== String(client.name || '').trim()) {
+      showToast('⚠️ Η διαγραφή ακυρώθηκε — το όνομα δεν ταιριάζει.');
+      return;
+    }
+    try {
+      await handlePermanentDeleteClient(client);
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
+    }
   };
 
   const openClientEditModal = (client) => {
@@ -1382,46 +1478,80 @@ ${summary}
   const saveClientEdit = async (e) => {
     e.preventDefault();
     if (!editingClient) return;
-    const updatedFields = {
-      name: editName.trim(),
-      phone: editPhone.trim(),
-      gender: editGender,
-      age: clampNum(editAge, 5, 115, 30),
-      weight: clampNum(editWeight, 25, 350, 65),
-      height: clampNum(editHeight, 90, 240, 165),
-      goal: editGoal.trim(),
-      questionnaire: {
-        ...editQ,
-        activityLevel: Number(editQ.activityLevel) || 1.375,
-        calorieDelta: Number(editQ.calorieDelta) || 0
+    try {
+      const user = await requireSessionUser();
+      assertClientAccess(editingClient, user, isAdmin);
+      const age = parseStrictNum(editAge, 5, 115);
+      const weight = parseStrictNum(editWeight, 25, 350);
+      const height = parseStrictNum(editHeight, 90, 240);
+      if (Number.isNaN(age) || Number.isNaN(weight) || Number.isNaN(height)) {
+        showToast('⚠️ Μη έγκυρα ανθρωπομετρικά στοιχεία.');
+        return;
       }
-    };
-    await supabase.from('clients').update(updatedFields).eq('id', editingClient.id);
-    setClients((prev) => prev.map((c) => (c.id === editingClient.id ? { ...c, ...updatedFields } : c)));
-    setEditingClient(null);
-    showToast('✓ Ο φάκελος πελάτη ενημερώθηκε!');
+      const updatedFields = {
+        name: sanitizeText(editName, 120),
+        phone: sanitizeText(editPhone, 40),
+        gender: editGender === 'male' ? 'male' : 'female',
+        age,
+        weight,
+        height,
+        goal: sanitizeText(editGoal, 200),
+        questionnaire: {
+          ...editQ,
+          activityLevel: Number(editQ.activityLevel) || 1.375,
+          calorieDelta: Number(editQ.calorieDelta) || 0
+        }
+      };
+      const { error } = await supabase.from('clients').update(updatedFields).eq('id', editingClient.id);
+      if (error) {
+        showToast(`⚠️ ${error.message}`);
+        return;
+      }
+      setClients((prev) => prev.map((c) => (c.id === editingClient.id ? { ...c, ...updatedFields } : c)));
+      setEditingClient(null);
+      showToast('✓ Ο φάκελος πελάτη ενημερώθηκε!');
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
+    }
   };
 
   const handleAddAppointment = async (e) => {
     e.preventDefault();
     if (!activeClientObj) return;
-    const payload = {
-      client_id: activeClientObj.id,
-      client_name: activeClientObj.name,
-      date: apptDate,
-      time: apptTime,
-      notes: apptNotes,
-      status: 'Προγραμματισμένο'
-    };
-    const { data, error } = await supabase.from('appointments').insert([payload]).select();
-    if (!error && data?.[0]) {
-      setAppointments((prev) => [...prev, data[0]]);
-      showToast('✓ Το ραντεβού καταχωρήθηκε!');
+    try {
+      const user = await requireSessionUser();
+      assertClientAccess(activeClientObj, user, isAdmin);
+      const payload = {
+        client_id: activeClientObj.id,
+        client_name: sanitizeText(activeClientObj.name, 120),
+        date: apptDate,
+        time: apptTime,
+        notes: sanitizeText(apptNotes, 500),
+        status: 'Προγραμματισμένο',
+        dietitian_id: user.id
+      };
+      const { data, error } = await supabase.from('appointments').insert([payload]).select();
+      if (error) {
+        showToast(`⚠️ ${error.message}`);
+        return;
+      }
+      if (data?.[0]) {
+        setAppointments((prev) => [...prev, data[0]]);
+        showToast('✓ Το ραντεβού καταχωρήθηκε!');
+      }
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
     }
   };
 
   const handleDeleteAppointment = async (id) => {
     if (!window.confirm('Διαγραφή αυτού του ραντεβού;')) return;
+    const user = await requireSessionUser();
+    const row = appointments.find((a) => a.id === id);
+    if (row?.dietitian_id && row.dietitian_id !== user.id && !isAdmin) {
+      showToast('⚠️ Δεν έχετε δικαίωμα διαγραφής αυτού του ραντεβού.');
+      return;
+    }
     await supabase.from('appointments').delete().eq('id', id);
     setAppointments((prev) => prev.filter((a) => a.id !== id));
     showToast('🗑️ Το ραντεβού διαγράφηκε.');
@@ -1430,25 +1560,43 @@ ${summary}
   const handleAddMeasurement = async (e) => {
     e.preventDefault();
     if (!activeClientObj || !measWeight) return;
-    const w = clampNum(measWeight, 25, 350, 65);
-    const payload = {
-      client_id: activeClientObj.id,
-      date: new Date().toISOString().slice(0, 10),
-      weight: w,
-      body_fat: measFat ? clampNum(measFat, 3, 70, null) : null,
-      muscle_mass: measMuscle ? clampNum(measMuscle, 10, 150, null) : null,
-      waist: measWaist ? clampNum(measWaist, 40, 220, null) : null
-    };
-    const { data, error } = await supabase.from('measurements').insert([payload]).select();
-    if (!error && data?.[0]) {
-      setMeasurements((prev) => [...prev, data[0]]);
-      await supabase.from('clients').update({ weight: w }).eq('id', activeClientObj.id);
-      setClients((prev) => prev.map((c) => (c.id === activeClientObj.id ? { ...c, weight: w } : c)));
-      setMeasWeight('');
-      setMeasFat('');
-      setMeasMuscle('');
-      setMeasWaist('');
-      showToast('✓ Η μέτρηση αποθηκεύτηκε & ενημερώθηκε το βάρος!');
+    try {
+      const user = await requireSessionUser();
+      assertClientAccess(activeClientObj, user, isAdmin);
+      const w = clampNum(measWeight, 25, 350, NaN);
+      if (Number.isNaN(w)) {
+        showToast('⚠️ Μη έγκυρο βάρος.');
+        return;
+      }
+      const payload = {
+        client_id: activeClientObj.id,
+        date: new Date().toISOString().slice(0, 10),
+        weight: w,
+        body_fat: measFat !== '' ? clampNum(measFat, 3, 70, NaN) : null,
+        muscle_mass: measMuscle !== '' ? clampNum(measMuscle, 10, 150, NaN) : null,
+        waist: measWaist !== '' ? clampNum(measWaist, 40, 220, NaN) : null,
+        dietitian_id: user.id
+      };
+      if (payload.body_fat !== null && Number.isNaN(payload.body_fat)) payload.body_fat = null;
+      if (payload.muscle_mass !== null && Number.isNaN(payload.muscle_mass)) payload.muscle_mass = null;
+      if (payload.waist !== null && Number.isNaN(payload.waist)) payload.waist = null;
+      const { data, error } = await supabase.from('measurements').insert([payload]).select();
+      if (error) {
+        showToast(`⚠️ ${error.message}`);
+        return;
+      }
+      if (data?.[0]) {
+        setMeasurements((prev) => [...prev, data[0]]);
+        await supabase.from('clients').update({ weight: w }).eq('id', activeClientObj.id);
+        setClients((prev) => prev.map((c) => (c.id === activeClientObj.id ? { ...c, weight: w } : c)));
+        setMeasWeight('');
+        setMeasFat('');
+        setMeasMuscle('');
+        setMeasWaist('');
+        showToast('✓ Η μέτρηση αποθηκεύτηκε & ενημερώθηκε το βάρος!');
+      }
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
     }
   };
 
@@ -1741,18 +1889,15 @@ ${summary}
               )}
 
               {authMode === 'register' && (
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '11px', color: '#cbd5e1', lineHeight: '1.4', cursor: 'pointer', marginTop: '2px' }}>
-                  <input
-                    type="checkbox"
-                    checked={gdprAccepted}
-                    onChange={(e) => setGdprAccepted(e.target.checked)}
-                    style={{ marginTop: '2px', accentColor: '#10b981' }}
-                    required
-                  />
-                  <span>
-                    Αποδέχομαι την ασφαλή τήρηση του διατροφολογικού μου φακέλου από τη Χάρις Φωτούδη σύμφωνα με τον κανονισμό <strong>GDPR</strong>.
-                  </span>
-                </label>
+                <GdprConsentFields
+                  gdprAccepted={gdprAccepted}
+                  setGdprAccepted={setGdprAccepted}
+                  art9Accepted={art9Accepted}
+                  setArt9Accepted={setArt9Accepted}
+                  termsAccepted={termsAccepted}
+                  setTermsAccepted={setTermsAccepted}
+                  onOpenLegal={setLegalDoc}
+                />
               )}
 
               <button
@@ -1808,8 +1953,12 @@ ${summary}
                 </div>
               )}
             </div>
+            <div style={{ marginTop: '14px' }}>
+              <MedicalFooter compact onOpenLegal={setLegalDoc} />
+            </div>
           </div>
         </div>
+        {legalDoc && <LegalModal docKey={legalDoc} onClose={() => setLegalDoc(null)} />}
       </div>
     );
   }
@@ -1839,6 +1988,25 @@ ${summary}
 
   return (
     <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', paddingBottom: '64px' }}>
+      {(dataLoading || dataError || clients.length === 0) && (
+        <div className="no-print" style={{ maxWidth: '1460px', margin: '10px auto 0', padding: '0 14px' }}>
+          {dataLoading && (
+            <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(16,185,129,0.12)', color: '#6ee7b7', fontSize: '12.5px', fontWeight: 700 }}>
+              Φόρτωση κλινικών δεδομένων…
+            </div>
+          )}
+          {dataError && (
+            <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(239,68,68,0.14)', color: '#fca5a5', fontSize: '12.5px', fontWeight: 700 }}>
+              {dataError}
+            </div>
+          )}
+          {!dataLoading && !dataError && clients.length === 0 && (
+            <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(251,191,36,0.12)', color: '#fde68a', fontSize: '12.5px', fontWeight: 700 }}>
+              Δεν βρέθηκαν φάκελοι πελατών για τον λογαριασμό σας.
+            </div>
+          )}
+        </div>
+      )}
       {!showPdfModal && (
         <div className="print-only-sheet">
           <PrintableExcelSheet
@@ -2320,7 +2488,7 @@ ${summary}
                 <div className="telemetry-micro-grid">
                   {FDA_MICROS.filter((m) => selectedMicros.includes(m.key)).map((m) => {
                     const val = dayNutrition.micros[m.key] ?? 0;
-                    const pct = Math.round((val / m.dv) * 100);
+                    const pct = fdaPercent(val, m.dv);
                     return (
                       <div key={m.key} style={{ background: 'rgba(5, 9, 8, 0.75)', padding: '10px 12px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
                         <div style={{ fontSize: '9.5px', color: m.color, fontWeight: '800' }}>{m.label}</div>
@@ -2899,20 +3067,42 @@ ${summary}
             </div>
 
             {showNewClientForm && (
-              <form onSubmit={handleCreateClient} style={{ background: 'rgba(5,9,8,0.82)', padding: '15px', borderRadius: '14px', border: '1px solid rgba(16,185,129,0.35)', marginBottom: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '9px' }}>
-                <input className="luxury-input" required placeholder="Ονοματεπώνυμο *" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
-                <input className="luxury-input" type="email" placeholder="Email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} />
-                <input className="luxury-input" type="tel" placeholder="Τηλέφωνο" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} />
-                <select className="luxury-input" value={newClientGender} onChange={(e) => setNewClientGender(e.target.value)}>
-                  <option value="female">Γυναίκα</option>
-                  <option value="male">Άνδρας</option>
-                </select>
-                <input className="luxury-input" type="number" placeholder="Ηλικία" value={newClientAge} onChange={(e) => setNewClientAge(e.target.value)} />
-                <input className="luxury-input" type="number" step="0.1" placeholder="Βάρος (kg)" value={newClientWeight} onChange={(e) => setNewClientWeight(e.target.value)} />
-                <input className="luxury-input" type="number" placeholder="Ύψος (cm)" value={newClientHeight} onChange={(e) => setNewClientHeight(e.target.value)} />
-                <input className="luxury-input" placeholder="Στόχος" value={newClientGoal} onChange={(e) => setNewClientGoal(e.target.value)} />
+              <form
+                onSubmit={handleCreateClient}
+                style={{
+                  background: 'rgba(5,9,8,0.82)',
+                  padding: '15px',
+                  borderRadius: '14px',
+                  border: '1px solid rgba(16,185,129,0.35)',
+                  marginBottom: '16px',
+                  display: 'grid',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '9px' }}>
+                  <input className="luxury-input" required placeholder="Ονοματεπώνυμο *" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
+                  <input className="luxury-input" type="email" placeholder="Email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} />
+                  <input className="luxury-input" type="tel" placeholder="Τηλέφωνο" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} />
+                  <select className="luxury-input" value={newClientGender} onChange={(e) => setNewClientGender(e.target.value)}>
+                    <option value="female">Γυναίκα</option>
+                    <option value="male">Άνδρας</option>
+                  </select>
+                  <input className="luxury-input" type="number" min={5} max={115} placeholder="Ηλικία" value={newClientAge} onChange={(e) => setNewClientAge(e.target.value)} />
+                  <input className="luxury-input" type="number" min={25} max={350} step="0.1" placeholder="Βάρος (kg)" value={newClientWeight} onChange={(e) => setNewClientWeight(e.target.value)} />
+                  <input className="luxury-input" type="number" min={90} max={240} placeholder="Ύψος (cm)" value={newClientHeight} onChange={(e) => setNewClientHeight(e.target.value)} />
+                  <input className="luxury-input" placeholder="Στόχος" value={newClientGoal} onChange={(e) => setNewClientGoal(e.target.value)} />
+                </div>
+                <GdprConsentFields
+                  gdprAccepted={newClientGdpr}
+                  setGdprAccepted={setNewClientGdpr}
+                  art9Accepted={newClientArt9}
+                  setArt9Accepted={setNewClientArt9}
+                  termsAccepted={newClientTerms}
+                  setTermsAccepted={setNewClientTerms}
+                  onOpenLegal={setLegalDoc}
+                />
                 <button type="submit" style={{ padding: '11px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '11px', fontWeight: '800', cursor: 'pointer' }}>
-                  ✓ Δημιουργία
+                  ✓ Δημιουργία Φακέλου
                 </button>
               </form>
             )}
@@ -3013,6 +3203,14 @@ ${summary}
                 </div>
               ))}
             </div>
+
+            <GdprDataActions
+              client={activeClientObj}
+              appointments={appointments}
+              measurements={measurements}
+              onPermanentDelete={handlePermanentDeleteClient}
+              disabled={!isAdmin && String(activeClientObj.user_id || '') !== String(session?.user?.id || '')}
+            />
           </section>
         )}
 
@@ -3748,6 +3946,12 @@ ${summary}
           </div>
         </div>
       )}
+
+      <div style={{ maxWidth: '1460px', margin: '0 auto', padding: '0 14px 88px' }}>
+        <MedicalFooter onOpenLegal={setLegalDoc} />
+      </div>
+
+      {legalDoc && <LegalModal docKey={legalDoc} onClose={() => setLegalDoc(null)} />}
 
       {toastMsg && (
         <div

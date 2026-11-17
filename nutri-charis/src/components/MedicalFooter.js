@@ -1,0 +1,38 @@
+import React from 'react';
+import { LegalLinks } from './LegalModal';
+
+const DISCLAIMER =
+  'Το NutriCharis αποτελεί εργαλείο υποστήριξης διαιτολογικού σχεδιασμού και δεν υποκαθιστά ιατρική διάγνωση, συμβουλή ή θεραπεία.';
+
+export default function MedicalFooter({ onOpenLegal, compact = false }) {
+  return (
+    <footer
+      className="no-print"
+      style={{
+        marginTop: compact ? '12px' : '28px',
+        padding: compact ? '12px 14px' : '18px 16px',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(2, 12, 9, 0.72)',
+        borderRadius: '14px'
+      }}
+    >
+      <p
+        style={{
+          margin: '0 0 10px 0',
+          fontSize: compact ? '11px' : '12px',
+          lineHeight: 1.55,
+          color: '#94a3b8',
+          textAlign: 'center'
+        }}
+      >
+        <strong style={{ color: '#fbbf24' }}>Ιατρική Αποποίηση:</strong> {DISCLAIMER}
+      </p>
+      {onOpenLegal && <LegalLinks onOpen={onOpenLegal} />}
+      <p style={{ margin: '10px 0 0 0', fontSize: '10.5px', color: '#64748b', textAlign: 'center' }}>
+        GDPR • Άρθρο 9 δεδομένα υγείας • Ν. 4624/2019 • Χάρις Φωτούδη
+      </p>
+    </footer>
+  );
+}
+
+export { DISCLAIMER };
