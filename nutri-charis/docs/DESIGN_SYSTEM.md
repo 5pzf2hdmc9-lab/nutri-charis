@@ -28,12 +28,24 @@
 - Billing progress: muted track + emerald gradient fill; month revenue telemetry in mono.
 - Reminder copy pill: sky idle → emerald «Αντιγράφηκε»; sits beside WhatsApp deep-link.
 
+## Anthropometrics + templates (Sprint 3)
+- Anthro entry: `.clinical-inset` under core weight form (above submit); `.section-kicker` for περιφέρειες / δερματοπτυχές.
+- History: Greek chips with units (`Λαιμός · 32 cm`); circ = `--info`, folds = `--success`; overflow `+N` stub chip.
+- Equations panel: mono % labeled «Εξίσωση» (never DEXA); empty via compact `.empty-state`.
+- Template library modal: Escape + backdrop; `.template-row` + 1-click apply; `.exchange-tile` Greek ισοδύναμα insert into selected meal.
+
 ## Plan + measurements (Sprint 2)
 - Weekly macros: `.luxury-card` table; % of target as `.status-badge` (info/warn/success for under/over/ok).
 - Shopping list modal: glass backdrop + elevated card; Escape/backdrop dismiss; `.empty-state` when no meals.
 - Clinical diet print: white A4 Georgia document (print-only exception to dark OS).
 - Body composition SVG: `.luxury-card` charts; compact `.empty-state` when under 2 points; waist series mint `#86efac` (no purple).
 - Biomarker panel: `.field-label` + `.luxury-input` form; latest values on `.luxury-card` with `.status-badge` bands.
+
+## Anthropometrics + week templates (Sprint 3)
+- Circumference / skinfold entry sits in `.clinical-inset` under the measurement form. Kicker `.section-kicker`; each field `.field-label` + `.luxury-input.font-mono-num`. Fill count is a `.status-badge` (`n/13`).
+- History chips use Greek names and units. cm chips are `--info`; mm chips are `--success`. Extra values collapse to a `.stub-chip` (`+N`).
+- Week-template modal matches shopping list: dialog, Escape, backdrop dismiss, `.modal-close`, labeled save field, `.template-row`, `.exchange-tile`.
+- Auth labels use `.field-label`. Register metrics use `.auth-metric-grid` (2 columns at ≤520px). Client switcher uses `.shell-select:focus-visible`.
 
 ## Responsive
 - Mobile-first sticky header + bottom nav; forms use `minmax` grids; no horizontal overflow (`maxWidth: 100vw`).

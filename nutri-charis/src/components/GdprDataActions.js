@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { buildClientExportBundle, downloadJsonFile } from '../lib/gdprExport';
+import { supabase } from '../supabaseClient';
 
 /**
  * GDPR Art.20 export + Art.17 erasure with double confirmation.
@@ -18,12 +19,26 @@ export default function GdprDataActions({
 
   if (!client) return null;
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setError('');
     try {
-      const bundle = buildClientExportBundle({ client, appointments, measurements });
+      const cid = Number(client.id);
+      const [notesRes, billRes] = await Promise.all([
+        supabase.from('clinical_notes').select('*').eq('client_id', cid),
+        supabase.from('billing_packages').select('*').eq('client_id', cid)
+      ]);
+      const warnings = [notesRes.error?.message, billRes.error?.message].filter(Boolean);
+      const bundle = buildClientExportBundle({
+        client,
+        appointments,
+        measurements,
+        clinicalNotes: notesRes.data || [],
+        billingPackages: billRes.data || [],
+        warnings
+      });
       const safeName = String(client.name || 'client').replace(/\s+/g, '_');
       downloadJsonFile(`NutriCharis_GDPR_Export_${safeName}.json`, bundle);
+      if (warnings.length) setError('Η εξαγωγή ολοκληρώθηκε με ελλείψεις σε SOAP/πακέτα.');
     } catch (err) {
       setError(err?.message || 'Αποτυχία εξαγωγής.');
     }

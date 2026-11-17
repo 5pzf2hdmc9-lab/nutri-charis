@@ -62,6 +62,16 @@ export function assertClientAccess(
   }
 }
 
+/** Session identity + folder ownership before any client-scoped write. */
+export async function guardClientWrite(
+  client: ClientRow | null | undefined,
+  isDietitian: boolean
+): Promise<SessionUser> {
+  const user = await requireSessionUser();
+  assertClientAccess(client, user, isDietitian);
+  return user;
+}
+
 /** Sanitize free-text fields against stored XSS payloads. */
 export function sanitizeText(input: unknown, maxLen = 500): string {
   return String(input ?? '')

@@ -2,7 +2,22 @@
 -- NutriCharis — Security Lockdown (RLS / IDOR / GDPR Art.9 consent columns)
 -- Run in Supabase SQL Editor. Idempotent where possible.
 -- OWASP: never rely on client-side filters alone — enforce at Postgres.
+-- LIVE project oyagdcavsamhdiuuuddu already uses private.is_dietitian().
+-- Re-applying this file would recreate public.is_dietitian and drop policies.
 -- =============================================================================
+
+DO $guard$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'private' AND p.proname = 'is_dietitian'
+  ) THEN
+    RAISE EXCEPTION
+      'Refusing historical security_rls.sql: private.is_dietitian is already installed.';
+  END IF;
+END
+$guard$;
 
 -- 1) Dietitian registry (roles must NOT live in editable user_metadata)
 CREATE TABLE IF NOT EXISTS public.dietitians (

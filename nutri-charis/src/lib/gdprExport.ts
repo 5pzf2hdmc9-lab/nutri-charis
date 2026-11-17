@@ -7,6 +7,9 @@ export type GdprExportBundle = {
   client: Record<string, unknown>;
   appointments: unknown[];
   measurements: unknown[];
+  clinicalNotes: unknown[];
+  billingPackages: unknown[];
+  warnings: string[];
 };
 
 /** Build a machine-readable JSON export for GDPR Art.20 portability. */
@@ -14,6 +17,9 @@ export function buildClientExportBundle(opts: {
   client: ClientRow;
   appointments: unknown[];
   measurements: unknown[];
+  clinicalNotes?: unknown[];
+  billingPackages?: unknown[];
+  warnings?: string[];
   controller?: string;
 }): GdprExportBundle {
   const { client, appointments, measurements } = opts;
@@ -30,7 +36,10 @@ export function buildClientExportBundle(opts: {
     measurements: (measurements || []).filter((m) => {
       const row = m as { client_id?: unknown; client?: unknown };
       return String(row.client_id ?? row.client ?? '') === clientId;
-    })
+    }),
+    clinicalNotes: opts.clinicalNotes || [],
+    billingPackages: opts.billingPackages || [],
+    warnings: opts.warnings || []
   };
 }
 

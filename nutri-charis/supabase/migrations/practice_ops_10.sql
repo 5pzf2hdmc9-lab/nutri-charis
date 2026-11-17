@@ -3,7 +3,22 @@
 -- Run in Supabase SQL Editor after security_rls.sql. Idempotent where possible.
 -- RLS: dietitian owns rows via auth.uid() = dietitian_id (FORCE RLS).
 -- Sprint 1 Fix: client_id is bigint (matches public.clients.id), NOT uuid.
+-- DO NOT re-run on the live project: the next statement drops SOAP and billing.
 -- =============================================================================
+
+DO $guard$
+BEGIN
+  IF to_regclass('public.clinical_notes') IS NOT NULL
+     AND EXISTS (
+       SELECT 1 FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'private' AND p.proname = 'is_dietitian'
+     ) THEN
+    RAISE EXCEPTION
+      'Refusing practice_ops_10.sql: it drops clinical_notes and billing_packages.';
+  END IF;
+END
+$guard$;
 
 -- Recreate if an earlier draft used uuid client_id (resets SOAP/billing rows only).
 DROP TABLE IF EXISTS public.billing_packages CASCADE;
