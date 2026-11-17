@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 const DOCS = {
   privacy: {
@@ -37,6 +37,16 @@ const DOCS = {
 
 export default function LegalModal({ docKey, onClose }) {
   const doc = DOCS[docKey];
+
+  useEffect(() => {
+    if (!doc) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [doc, onClose]);
+
   if (!doc) return null;
 
   return (

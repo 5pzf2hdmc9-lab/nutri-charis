@@ -9,11 +9,13 @@ export default function MedicalFooter({ onOpenLegal, compact = false }) {
     <footer
       className="no-print"
       style={{
-        marginTop: compact ? '12px' : '28px',
-        padding: compact ? '12px 14px' : '18px 16px',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(2, 12, 9, 0.72)',
-        borderRadius: '14px'
+        marginTop: compact ? '14px' : '28px',
+        padding: compact ? '14px 14px 12px' : '18px 16px',
+        border: '1px solid rgba(255,255,255,0.07)',
+        background:
+          'linear-gradient(180deg, rgba(8, 18, 14, 0.55) 0%, rgba(2, 12, 9, 0.82) 100%)',
+        borderRadius: '14px',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)'
       }}
     >
       <p

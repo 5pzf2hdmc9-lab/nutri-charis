@@ -46,6 +46,21 @@ const CALORIE_DELTAS = [
   { value: 500, label: '+500 kcal (Υπερτροφία)' }
 ];
 
+const APPOINTMENT_TYPES = [
+  '1η Συνεδρία & Λιπομέτρηση',
+  'Επανελέγχου & Παρακολούθηση',
+  'Online Coaching Check-in',
+  'Τακτική συνεδρία'
+];
+
+/** Practice tools not yet wired — shown as honest stubs (no fake backends). */
+const PRACTICE_STUBS = [
+  { id: 'billing', title: 'Τιμολόγηση & Πληρωμές', body: 'Τιμολόγια, πακέτα συνεδριών και κάρτες — σύντομα.' },
+  { id: 'telehealth', title: 'Τηλεσυνεδρία', body: 'Ενσωματωμένο video · προς το παρόν χρησιμοποιήστε Zoom/Meet + WhatsApp υπενθύμιση.' },
+  { id: 'reminders', title: 'Αυτόματες Υπενθυμίσεις', body: 'SMS/Email 24ω πριν το ραντεβού — στη λίστα υλοποίησης.' },
+  { id: 'calendar', title: 'Google / Apple Calendar', body: 'Συγχρονισμός διαθεσιμότητας — stub, χωρίς σύνδεση ακόμα.' }
+];
+
 const DEFAULT_MEAL_IDEAS = [
   { id: 'i1', category: 'Πρωινό', text: '150γρ γιαούρτι στραγγιστό 2%, 35γρ νιφάδες βρώμης, 60γρ μύρτιλα, 10γρ σπόροι chia' },
   { id: 'i2', category: 'Πρωινό', text: '2 αυγά βραστά, 1 φέτα ψωμί ολικής άλεσης (35γρ), 40γρ τυρί cottage, 80γρ αγγούρι' },
@@ -384,9 +399,10 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-function BrandLogo({ size = 38 }) {
+function BrandLogo({ size = 38, className = '' }) {
   return (
     <div
+      className={className}
       style={{
         width: size,
         height: size,
@@ -399,7 +415,7 @@ function BrandLogo({ size = 38 }) {
         flexShrink: 0
       }}
     >
-      <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="none">
+      <svg width={size * 0.58} height={size * 0.58} viewBox="0 0 24 24" fill="none" aria-hidden>
         <path
           d="M19.5 4.5C13 4.5 7.5 8 5.5 14.5C4.8 16.8 5 19.5 5 19.5C5 19.5 7.7 19.7 10 19C16.5 17 20 11.5 19.5 4.5Z"
           stroke="#ffffff"
@@ -526,6 +542,46 @@ function MultiChipGroup({ options, values = [], onToggle }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/** Linear/Stripe-grade empty state — one job, clear CTA, no misleading chrome. */
+function EmptyState({ icon = '◇', glyph, title, body, hint, actionLabel, onAction }) {
+  const detail = body || hint;
+  const mark = glyph || icon;
+  return (
+    <div className="empty-state" role="status">
+      <div className="empty-state__glyph" aria-hidden="true">
+        {mark}
+      </div>
+      <p className="empty-state__title font-display">{title}</p>
+      {detail ? <p className="empty-state__hint">{detail}</p> : null}
+      {actionLabel && typeof onAction === 'function' ? (
+        <button type="button" className="btn-emerald" onClick={onAction} style={{ padding: '10px 16px', marginTop: '10px' }}>
+          {actionLabel}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function DataSkeleton() {
+  return (
+    <div className="luxury-card" style={{ padding: '16px', display: 'grid', gap: '12px' }} aria-busy="true" aria-label="Φόρτωση δεδομένων">
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div className="skeleton-block" style={{ width: 42, height: 42, borderRadius: 13 }} />
+        <div style={{ flex: 1, display: 'grid', gap: 8 }}>
+          <div className="skeleton-block" style={{ height: 14, width: '42%' }} />
+          <div className="skeleton-block" style={{ height: 10, width: '28%' }} />
+        </div>
+      </div>
+      <div className="telemetry-core-grid">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="skeleton-block" style={{ height: 64 }} />
+        ))}
+      </div>
+      <div className="skeleton-block" style={{ height: 120 }} />
     </div>
   );
 }
@@ -829,7 +885,9 @@ function NutriCharisPlatform() {
   // Appointments & Measurements
   const [apptDate, setApptDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [apptTime, setApptTime] = useState('10:30');
-  const [apptNotes, setApptNotes] = useState('Τακτική συνεδρία & λιπομέτρηση');
+  const [apptType, setApptType] = useState(APPOINTMENT_TYPES[0]);
+  const [apptNotes, setApptNotes] = useState('');
+  const [apptFilter, setApptFilter] = useState('upcoming');
   const [measWeight, setMeasWeight] = useState('');
   const [measFat, setMeasFat] = useState('');
   const [measMuscle, setMeasMuscle] = useState('');
@@ -1080,6 +1138,24 @@ function NutriCharisPlatform() {
     });
   }, [appointments, clients]);
 
+  const filteredAppointments = useMemo(() => {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const sorted = [...visibleAppointments].sort(
+      (a, b) =>
+        String(a.date || '').localeCompare(String(b.date || '')) ||
+        String(a.time || '').localeCompare(String(b.time || ''))
+    );
+    if (apptFilter === 'all') return sorted;
+    return sorted.filter((a) => {
+      const d = String(a.date || '');
+      const t = String(a.time || '00:00').slice(0, 5);
+      const isPast = d < today || (d === today && t < hm);
+      return apptFilter === 'past' ? isPast : !isPast;
+    });
+  }, [visibleAppointments, apptFilter]);
+
   const calcResult = useMemo(
     () =>
       calculateMetabolism({
@@ -1243,6 +1319,17 @@ function NutriCharisPlatform() {
     }
   };
 
+  const mapAuthUpdateError = (raw) => {
+    const msg = String(raw || '').toLowerCase();
+    if (msg.includes('session') || msg.includes('not authenticated') || msg.includes('jwt')) {
+      return 'Ο σύνδεσμος επαναφοράς έληξε ή δεν είναι έγκυρος. Ζητήστε νέο link από «Ξέχασα τον κωδικό μου».';
+    }
+    if (msg.includes('same password') || msg.includes('should be different')) {
+      return 'Ο νέος κωδικός πρέπει να διαφέρει από τον προηγούμενο.';
+    }
+    return raw || 'Αποτυχία ενημέρωσης κωδικού.';
+  };
+
   const handlePasswordUpdateSubmit = async (e) => {
     e.preventDefault();
     if (passwordUpdating) return;
@@ -1261,7 +1348,7 @@ function NutriCharisPlatform() {
     try {
       const { error } = await supabase.auth.updateUser({ password: pw });
       if (error) {
-        setAuthError(error.message || 'Αποτυχία ενημέρωσης κωδικού.');
+        setAuthError(mapAuthUpdateError(error.message));
         return;
       }
       clearAuthRedirectParamsFromUrl();
@@ -1271,7 +1358,7 @@ function NutriCharisPlatform() {
       // Session από recovery παραμένει ενεργή → άμεση είσοδος στο dashboard.
       showToast('✓ Ο νέος κωδικός αποθηκεύτηκε! Καλωσήρθατε.');
     } catch (err) {
-      setAuthError(err?.message || 'Αποτυχία ενημέρωσης κωδικού.');
+      setAuthError(mapAuthUpdateError(err?.message));
     } finally {
       setPasswordUpdating(false);
     }
@@ -1690,12 +1777,14 @@ ${summary}
     try {
       const user = await requireSessionUser();
       assertClientAccess(activeClientObj, user, isAdmin);
+      const typeLabel = sanitizeText(apptType || APPOINTMENT_TYPES[0], 80);
+      const extraNotes = sanitizeText(apptNotes, 400);
       const payload = {
         client_id: activeClientObj.id,
         client_name: sanitizeText(activeClientObj.name, 120),
         date: apptDate,
         time: apptTime,
-        notes: sanitizeText(apptNotes, 500),
+        notes: sanitizeText(extraNotes ? `${typeLabel} — ${extraNotes}` : typeLabel, 500),
         status: 'Προγραμματισμένο',
         dietitian_id: user.id
       };
@@ -1805,10 +1894,26 @@ ${summary}
   // =========================================================================
   if (authLoading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-        <BrandLogo size={54} />
-        <div style={{ fontSize: '14px', color: '#6ee7b7', fontWeight: '700', letterSpacing: '0.06em' }}>
-          NUTRICHARIS CLINICAL OS...
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '18px'
+        }}
+      >
+        <BrandLogo size={52} className="boot-logo-pulse" />
+        <div className="boot-spinner" aria-hidden />
+        <div
+          className="font-display"
+          style={{ fontSize: '15px', color: '#e2e8f0', fontWeight: 800, letterSpacing: '-0.02em' }}
+        >
+          Χάρις Φωτούδη
+        </div>
+        <div style={{ fontSize: '11.5px', color: '#34d399', fontWeight: 700, letterSpacing: '0.08em' }}>
+          NUTRICHARIS
         </div>
       </div>
     );
@@ -1845,7 +1950,7 @@ ${summary}
             Ορίστε νέο κωδικό. Μετά την αποθήκευση θα συνδεθείτε αυτόματα στο dashboard.
           </p>
           {authError && (
-            <div className="status-badge status-badge--danger" style={{ display: 'block', marginBottom: '12px', borderRadius: '11px', padding: '10px 14px' }}>
+            <div role="alert" className="status-badge status-badge--danger" style={{ display: 'block', marginBottom: '12px', borderRadius: '11px', padding: '10px 14px' }}>
               {authError}
             </div>
           )}
@@ -1946,88 +2051,95 @@ ${summary}
         <div
           className="auth-brand-panel"
           style={{
-            padding: '56px',
+            padding: '56px 52px',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
             borderRight: '1px solid rgba(255,255,255,0.07)',
-            background: 'linear-gradient(160deg, rgba(6, 24, 18, 0.85) 0%, rgba(5, 8, 7, 0.95) 100%)'
+            background: 'linear-gradient(165deg, rgba(6, 28, 20, 0.92) 0%, rgba(5, 8, 7, 0.98) 100%)'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <BrandLogo size={46} />
+          <div className="auth-brand-reveal" style={{ display: 'flex', flexDirection: 'column', gap: '18px', maxWidth: '540px' }}>
+            <BrandLogo size={58} />
             <div>
-              <div className="font-display" style={{ fontSize: '20px', fontWeight: '800', color: '#fff' }}>
+              <div
+                className="font-display"
+                style={{ fontSize: 'clamp(34px, 4.2vw, 48px)', fontWeight: 800, color: '#fff', lineHeight: 1.05, margin: 0 }}
+              >
+                Χάρις Φωτούδη
+              </div>
+              <div
+                style={{
+                  marginTop: '10px',
+                  fontSize: '15px',
+                  color: '#34d399',
+                  fontWeight: 700,
+                  letterSpacing: '0.04em'
+                }}
+              >
                 NutriCharis
               </div>
-              <div style={{ fontSize: '12px', color: '#34d399', fontWeight: '600' }}>
-                Χάρις Φωτούδη • Clinical Nutrition OS
-              </div>
             </div>
-          </div>
-
-          <div style={{ maxWidth: '520px' }}>
-            <div
+            <h1
+              className="font-display"
               style={{
-                display: 'inline-block',
-                padding: '6px 14px',
-                borderRadius: '99px',
-                background: 'rgba(16, 185, 129, 0.14)',
-                border: '1px solid rgba(16, 185, 129, 0.35)',
-                color: '#6ee7b7',
-                fontSize: '11.5px',
-                fontWeight: '700',
-                marginBottom: '18px'
+                fontSize: 'clamp(20px, 2.2vw, 26px)',
+                lineHeight: 1.35,
+                fontWeight: 700,
+                margin: 0,
+                color: '#e2e8f0',
+                maxWidth: '420px'
               }}
             >
-              PRECISION DIETETICS & FDA METABOLIC ENGINE
-            </div>
-            <h1 style={{ fontSize: '38px', lineHeight: '1.15', fontWeight: '800', margin: '0 0 18px 0' }}>
-              Η επόμενη γενιά <span style={{ color: '#34d399' }}>κλινικής διαιτολογίας</span>.
+              Κλινικός σχεδιασμός διατροφής με ακρίβεια.
             </h1>
-            <p style={{ color: '#94a3b8', fontSize: '15px', lineHeight: '1.65', margin: 0 }}>
-              Εξατομικευμένος μεταβολικός σχεδιασμός Mifflin-St Jeor, Harris-Benedict & Katch-McArdle, ανάλυση 11 μικροθρεπτικών FDA σε πραγματικό χρόνο και mobile-first εμπειρία πελάτη.
+            <p style={{ color: '#94a3b8', fontSize: '14.5px', lineHeight: 1.65, margin: 0, maxWidth: '400px' }}>
+              Μεταβολικός υπολογισμός, FDA μικροθρεπτικά και ασφαλής φάκελος πελάτη — σε ένα clinical OS.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px' }}>
-            {[
-              { k: '3 Εξισώσεις BMR', v: 'Mifflin, Harris & Katch' },
-              { k: '11 FDA Micros', v: 'Κάλιο, Fe, Ca, D, B12' },
-              { k: 'GDPR & RLS Safe', v: 'Κρυπτογραφημένοι Φάκελοι' }
-            ].map((item) => (
-              <div key={item.k} className="luxury-card" style={{ padding: '14px 16px', borderRadius: '16px' }}>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: '#34d399' }}>{item.k}</div>
-                <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '3px' }}>{item.v}</div>
-              </div>
-            ))}
+          <div className="auth-brand-meta auth-brand-reveal" style={{ animationDelay: '0.12s' }}>
+            BMR · FDA micros · GDPR / Art.9
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '18px' }}>
-          <div className="luxury-card" style={{ width: '100%', maxWidth: '450px', padding: '26px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-              <BrandLogo size={42} />
+        <div className="auth-form-column">
+          <div className="luxury-card glass-elevated auth-form-rise" style={{ width: '100%', maxWidth: '440px', padding: '28px 26px' }}>
+            <div className="auth-mobile-brand">
+              <BrandLogo size={40} />
               <div>
-                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '800' }}>
-                  {authMode === 'login'
-                    ? 'Σύνδεση στο Γραφείο'
-                    : authMode === 'register'
-                    ? 'Εγγραφή & Ιστορικό Πελάτη'
-                    : 'Επαναφορά Κωδικού'}
-                </h2>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Χάρις Φωτούδη • Διατροφολογικό Κέντρο</div>
+                <div className="font-display" style={{ fontSize: '18px', fontWeight: 800, color: '#fff' }}>
+                  Χάρις Φωτούδη
+                </div>
+                <div style={{ fontSize: '12px', color: '#34d399', fontWeight: 700 }}>NutriCharis</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <h2 className="font-display" style={{ margin: '0 0 6px 0', fontSize: '21px', fontWeight: 800 }}>
+                {authMode === 'login'
+                  ? 'Σύνδεση'
+                  : authMode === 'register'
+                  ? 'Εγγραφή πελάτη'
+                  : 'Επαναφορά κωδικού'}
+              </h2>
+              <div style={{ fontSize: '12.5px', color: '#94a3b8', lineHeight: 1.45 }}>
+                {authMode === 'login'
+                  ? 'Είσοδος στο διατροφολογικό γραφείο.'
+                  : authMode === 'register'
+                  ? 'Δημιουργία φακέλου με ρητή συγκατάθεση GDPR.'
+                  : 'Θα λάβετε σύνδεσμο επαναφοράς στο email σας.'}
               </div>
             </div>
 
             {authError && (
-              <div style={{ padding: '11px 14px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.14)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#fca5a5', fontSize: '12.5px', marginBottom: '14px' }}>
+              <div role="alert" style={{ padding: '11px 14px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.14)', border: '1px solid rgba(239, 68, 68, 0.35)', color: '#fca5a5', fontSize: '12.5px', marginBottom: '14px' }}>
                 {authError}
               </div>
             )}
 
             {authSuccess && (
-              <div style={{ padding: '11px 14px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.14)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#6ee7b7', fontSize: '12.5px', marginBottom: '14px' }}>
+              <div role="status" style={{ padding: '11px 14px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.14)', border: '1px solid rgba(16, 185, 129, 0.35)', color: '#6ee7b7', fontSize: '12.5px', marginBottom: '14px' }}>
                 {authSuccess}
               </div>
             )}
@@ -2056,15 +2168,15 @@ ${summary}
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '10.5px', color: '#94a3b8', marginBottom: '3px' }}>Ηλικία</label>
-                      <input className="luxury-input" style={{ padding: '9px 8px', fontSize: '12.5px' }} type="number" value={authAge} onChange={(e) => setAuthAge(e.target.value)} />
+                      <input className="luxury-input" style={{ padding: '9px 8px', fontSize: '12.5px' }} type="number" min={5} max={115} required value={authAge} onChange={(e) => setAuthAge(e.target.value)} />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '10.5px', color: '#94a3b8', marginBottom: '3px' }}>Κιλά</label>
-                      <input className="luxury-input" style={{ padding: '9px 8px', fontSize: '12.5px' }} type="number" step="0.1" value={authWeight} onChange={(e) => setAuthWeight(e.target.value)} />
+                      <input className="luxury-input" style={{ padding: '9px 8px', fontSize: '12.5px' }} type="number" min={25} max={350} step="0.1" required value={authWeight} onChange={(e) => setAuthWeight(e.target.value)} />
                     </div>
                     <div>
                       <label style={{ display: 'block', fontSize: '10.5px', color: '#94a3b8', marginBottom: '3px' }}>Ύψος</label>
-                      <input className="luxury-input" style={{ padding: '9px 8px', fontSize: '12.5px' }} type="number" value={authHeight} onChange={(e) => setAuthHeight(e.target.value)} />
+                      <input className="luxury-input" style={{ padding: '9px 8px', fontSize: '12.5px' }} type="number" min={90} max={240} required value={authHeight} onChange={(e) => setAuthHeight(e.target.value)} />
                     </div>
                   </div>
 
@@ -2118,6 +2230,7 @@ ${summary}
                       className="luxury-input"
                       type={showPassword ? 'text' : 'password'}
                       required
+                      minLength={6}
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
                       placeholder="••••••••"
@@ -2208,7 +2321,7 @@ ${summary}
                 </div>
               )}
             </div>
-            <div style={{ marginTop: '14px' }}>
+            <div style={{ marginTop: '16px' }}>
               <MedicalFooter compact onOpenLegal={setLegalDoc} />
             </div>
           </div>
@@ -2243,21 +2356,11 @@ ${summary}
 
   return (
     <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', paddingBottom: '64px' }}>
-      {(dataLoading || dataError || clients.length === 0) && (
+      {(dataError || (!dataLoading && clients.length === 0)) && (
         <div className="no-print" style={{ maxWidth: '1460px', margin: '10px auto 0', padding: '0 14px' }}>
-          {dataLoading && (
-            <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(16,185,129,0.12)', color: '#6ee7b7', fontSize: '12.5px', fontWeight: 700 }}>
-              Φόρτωση κλινικών δεδομένων…
-            </div>
-          )}
           {dataError && (
             <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(239,68,68,0.14)', color: '#fca5a5', fontSize: '12.5px', fontWeight: 700 }}>
               {dataError}
-            </div>
-          )}
-          {!dataLoading && !dataError && clients.length === 0 && (
-            <div style={{ padding: '10px 14px', borderRadius: '12px', background: 'rgba(251,191,36,0.12)', color: '#fde68a', fontSize: '12.5px', fontWeight: 700 }}>
-              Δεν βρέθηκαν φάκελοι πελατών για τον λογαριασμό σας.
             </div>
           )}
         </div>
@@ -2294,22 +2397,12 @@ ${summary}
                 <span className="font-display" style={{ fontSize: '15px', fontWeight: '800', color: '#fff', whiteSpace: 'nowrap' }}>
                   Χάρις Φωτούδη
                 </span>
-                <span
-                  style={{
-                    fontSize: '9px',
-                    fontWeight: '800',
-                    padding: '2px 6px',
-                    borderRadius: '99px',
-                    background: 'rgba(245, 158, 11, 0.16)',
-                    color: '#fbbf24',
-                    border: '1px solid rgba(245, 158, 11, 0.35)'
-                  }}
-                >
-                  PRO v6
+                <span className="status-badge status-badge--info" style={{ fontSize: '9px', padding: '2px 6px' }}>
+                  NutriCharis
                 </span>
               </div>
               <div style={{ fontSize: '10px', color: '#34d399', fontWeight: '600' }}>
-                Clinical Nutrition OS
+                Clinical Nutrition OS · Solo
               </div>
             </div>
           </div>
@@ -2455,6 +2548,29 @@ ${summary}
       </nav>
 
       <main className="app-main-container no-print" style={{ maxWidth: '1460px', width: '100%', margin: '18px auto 0 auto', padding: '0 22px', display: 'grid', gap: '14px' }}>
+        {dataLoading && <DataSkeleton />}
+
+        {!dataLoading && !activeClientObj && activeTab !== 'clients' && (
+          <EmptyState
+            icon="👥"
+            title={isAdmin ? 'Δεν υπάρχει ενεργός φάκελος πελάτη' : 'Ο φάκελός σας δεν είναι ακόμα διαθέσιμος'}
+            body={
+              isAdmin
+                ? 'Δημιουργήστε τον πρώτο κλινικό φάκελο ή επιλέξτε πελάτη από το μητρώο για να συνεχίσετε με πλάνο, μετρήσεις και ραντεβού.'
+                : 'Μόλις ο διαιτολόγος συνδέσει τον λογαριασμό σας, θα εμφανιστεί εδώ το εξατομικευμένο πλάνο.'
+            }
+            actionLabel={isAdmin ? '+ Νέος φάκελος πελάτη' : null}
+            onAction={
+              isAdmin
+                ? () => {
+                    setActiveTab('clients');
+                    setShowNewClientForm(true);
+                  }
+                : undefined
+            }
+          />
+        )}
+
         {/* ACTIVE CLIENT EXECUTIVE RIBBON + CALORIE TARGET SELECTOR */}
         {activeClientObj && (
           <section
@@ -3332,17 +3448,41 @@ ${summary}
                 }}
               >
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '9px' }}>
-                  <input className="luxury-input" required placeholder="Ονοματεπώνυμο *" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
-                  <input className="luxury-input" type="email" placeholder="Email" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} />
-                  <input className="luxury-input" type="tel" placeholder="Τηλέφωνο" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} />
-                  <select className="luxury-input" value={newClientGender} onChange={(e) => setNewClientGender(e.target.value)}>
-                    <option value="female">Γυναίκα</option>
-                    <option value="male">Άνδρας</option>
-                  </select>
-                  <input className="luxury-input" type="number" min={5} max={115} placeholder="Ηλικία" value={newClientAge} onChange={(e) => setNewClientAge(e.target.value)} />
-                  <input className="luxury-input" type="number" min={25} max={350} step="0.1" placeholder="Βάρος (kg)" value={newClientWeight} onChange={(e) => setNewClientWeight(e.target.value)} />
-                  <input className="luxury-input" type="number" min={90} max={240} placeholder="Ύψος (cm)" value={newClientHeight} onChange={(e) => setNewClientHeight(e.target.value)} />
-                  <input className="luxury-input" placeholder="Στόχος" value={newClientGoal} onChange={(e) => setNewClientGoal(e.target.value)} />
+                  <div>
+                    <label className="field-label" htmlFor="nc-name">Ονοματεπώνυμο *</label>
+                    <input id="nc-name" className="luxury-input" required placeholder="π.χ. Μαρία Παπαδοπούλου" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-email">Email</label>
+                    <input id="nc-email" className="luxury-input" type="email" placeholder="name@example.com" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-phone">Τηλέφωνο</label>
+                    <input id="nc-phone" className="luxury-input" type="tel" placeholder="69…" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-gender">Φύλο</label>
+                    <select id="nc-gender" className="luxury-input" value={newClientGender} onChange={(e) => setNewClientGender(e.target.value)}>
+                      <option value="female">Γυναίκα</option>
+                      <option value="male">Άνδρας</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-age">Ηλικία</label>
+                    <input id="nc-age" className="luxury-input" type="number" min={5} max={115} value={newClientAge} onChange={(e) => setNewClientAge(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-weight">Βάρος (kg)</label>
+                    <input id="nc-weight" className="luxury-input" type="number" min={25} max={350} step="0.1" value={newClientWeight} onChange={(e) => setNewClientWeight(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-height">Ύψος (cm)</label>
+                    <input id="nc-height" className="luxury-input" type="number" min={90} max={240} value={newClientHeight} onChange={(e) => setNewClientHeight(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="field-label" htmlFor="nc-goal">Στόχος</label>
+                    <input id="nc-goal" className="luxury-input" placeholder="π.χ. Απώλεια λίπους" value={newClientGoal} onChange={(e) => setNewClientGoal(e.target.value)} />
+                  </div>
                 </div>
                 <GdprConsentFields
                   gdprAccepted={newClientGdpr}
@@ -3353,10 +3493,30 @@ ${summary}
                   setTermsAccepted={setNewClientTerms}
                   onOpenLegal={setLegalDoc}
                 />
-                <button type="submit" style={{ padding: '11px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '11px', fontWeight: '800', cursor: 'pointer' }}>
+                <button type="submit" className="btn-emerald" style={{ padding: '11px', cursor: 'pointer' }}>
                   ✓ Δημιουργία Φακέλου
                 </button>
               </form>
+            )}
+
+            {clients.length === 0 && !showNewClientForm && (
+              <EmptyState
+                icon="👥"
+                title="Κενό μητρώο πελατών"
+                body="Ξεκινήστε με τον πρώτο κλινικό φάκελο — ανθρωπομετρικά, συγκαταθέσεις GDPR και στόχος σε ένα βήμα."
+                actionLabel="+ Νέος Πελάτης"
+                onAction={() => setShowNewClientForm(true)}
+              />
+            )}
+
+            {clients.length > 0 && filteredClients.length === 0 && (
+              <EmptyState
+                icon="🔍"
+                title="Κανένα αποτέλεσμα αναζήτησης"
+                body={`Δεν βρέθηκε πελάτης για «${clientSearch.trim()}». Δοκιμάστε όνομα, email ή τηλέφωνο.`}
+                actionLabel="Καθαρισμός φίλτρου"
+                onAction={() => setClientSearch('')}
+              />
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '11px' }}>
@@ -3409,6 +3569,36 @@ ${summary}
                   </div>
                 );
               })}
+            </div>
+
+            <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '800', color: '#e2e8f0' }}>Εργαλεία Πρακτικής</h4>
+                <span className="stub-chip">Σύντομα · stub</span>
+              </div>
+              <p style={{ margin: '0 0 10px 0', fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.5 }}>
+                Ανταγωνιστές όπως Practice Better / Healthie / Jane περιλαμβάνουν αυτά — εδώ εμφανίζονται ως σαφή stubs χωρίς ψεύτικο backend.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '9px' }}>
+                {PRACTICE_STUBS.map((s) => (
+                  <div
+                    key={s.id}
+                    style={{
+                      padding: '12px 13px',
+                      borderRadius: '12px',
+                      background: 'rgba(5,9,8,0.65)',
+                      border: '1px dashed rgba(148,163,184,0.28)',
+                      opacity: 0.92
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
+                      <strong style={{ fontSize: '12px', color: '#cbd5e1' }}>{s.title}</strong>
+                      <span className="stub-chip">N/A</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.45 }}>{s.body}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </section>
         )}
@@ -3467,18 +3657,58 @@ ${summary}
         )}
 
         {/* ================================================================= */}
-        {/* TAB 4: ΡΑΝΤΕΒΟΥ (WITH LEGACY FALLBACK + 1-CLICK WHATSAPP)         */}
+        {/* TAB 4: ΡΑΝΤΕΒΟΥ (FILTER + TYPED SESSION + WHATSAPP)                 */}
         {/* ================================================================= */}
         {activeTab === 'appointments' && (
           <section className="luxury-card" style={{ padding: '20px' }}>
-            <h3 style={{ margin: '0 0 13px 0', fontSize: '17.5px', fontWeight: '800' }}>🗓️ Πρόγραμμα Συνεδριών & Ραντεβού</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '13px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17.5px', fontWeight: '800' }}>🗓️ Πρόγραμμα Συνεδριών & Ραντεβού</h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '11.5px', color: '#94a3b8' }}>
+                  {visibleAppointments.length} συνολικά · φίλτρο: {apptFilter === 'upcoming' ? 'Επερχόμενα' : apptFilter === 'past' ? 'Παρελθόντα' : 'Όλα'}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }} role="group" aria-label="Φίλτρο ραντεβού">
+                {[
+                  { id: 'upcoming', label: 'Επερχόμενα' },
+                  { id: 'past', label: 'Παρελθόντα' },
+                  { id: 'all', label: 'Όλα' }
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`filter-chip ${apptFilter === f.id ? 'filter-chip--on' : 'filter-chip--off'}`}
+                    onClick={() => setApptFilter(f.id)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {isAdmin && activeClientObj && (
               <form onSubmit={handleAddAppointment} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '9px', marginBottom: '16px', background: 'rgba(5,9,8,0.75)', padding: '13px', borderRadius: '13px' }}>
-                <input className="luxury-input" type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} required />
-                <input className="luxury-input" type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} required />
-                <input className="luxury-input" type="text" value={apptNotes} onChange={(e) => setApptNotes(e.target.value)} placeholder="Σημειώσεις συνεδρίας..." />
-                <button type="submit" style={{ padding: '11px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '11px', fontWeight: '800', fontSize: '12px', cursor: 'pointer' }}>
+                <div>
+                  <label className="field-label" htmlFor="appt-date">Ημερομηνία</label>
+                  <input id="appt-date" className="luxury-input" type="date" value={apptDate} onChange={(e) => setApptDate(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="appt-time">Ώρα</label>
+                  <input id="appt-time" className="luxury-input" type="time" value={apptTime} onChange={(e) => setApptTime(e.target.value)} required />
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="appt-type">Τύπος συνεδρίας</label>
+                  <select id="appt-type" className="luxury-input" value={apptType} onChange={(e) => setApptType(e.target.value)}>
+                    {APPOINTMENT_TYPES.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label" htmlFor="appt-notes">Σημειώσεις (προαιρετικά)</label>
+                  <input id="appt-notes" className="luxury-input" type="text" value={apptNotes} onChange={(e) => setApptNotes(e.target.value)} placeholder="π.χ. επανέλεγχος μετρήσεων" />
+                </div>
+                <button type="submit" className="btn-emerald" style={{ padding: '11px', fontSize: '12px', cursor: 'pointer', alignSelf: 'end' }}>
                   + Κλείσιμο ({activeClientObj.name.split(' ')[0]})
                 </button>
               </form>
@@ -3486,9 +3716,25 @@ ${summary}
 
             <div style={{ display: 'grid', gap: '9px' }}>
               {visibleAppointments.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: '13px' }}>Δεν υπάρχουν καταχωρημένα ραντεβού.</div>
+                <EmptyState
+                  glyph="◷"
+                  title="Κανένα ραντεβού ακόμα"
+                  hint={
+                    isAdmin && activeClientObj
+                      ? `Κλείστε την πρώτη συνεδρία για ${activeClientObj.name.split(' ')[0]} — ημερομηνία, ώρα και τύπος σε ένα βήμα.`
+                      : 'Τα προγραμματισμένα ραντεβού θα εμφανιστούν εδώ.'
+                  }
+                />
+              ) : filteredAppointments.length === 0 ? (
+                <EmptyState
+                  glyph="⌕"
+                  title={apptFilter === 'upcoming' ? 'Δεν υπάρχουν επερχόμενα ραντεβού' : 'Δεν υπάρχουν παρελθόντα ραντεβού'}
+                  hint="Αλλάξτε φίλτρο σε «Όλα» για ολόκληρο το ιστορικό συνεδριών."
+                  actionLabel="Εμφάνιση όλων"
+                  onAction={() => setApptFilter('all')}
+                />
               ) : (
-                visibleAppointments.map((a) => {
+                filteredAppointments.map((a) => {
                   const cl = clients.find(
                     (c) =>
                       String(c.id) === String(a.client_id || a.client) ||
@@ -3500,8 +3746,14 @@ ${summary}
                   const waMsg = encodeURIComponent(
                     `Καλησπέρα ${displayName}! Υπενθύμιση για το ραντεβού μας στο διαιτολογικό γραφείο της Χάρις Φωτούδη στις ${a.date} και ώρα ${a.time}.`
                   );
+                  const now = new Date();
+                  const today = now.toISOString().slice(0, 10);
+                  const hm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+                  const d = String(a.date || '');
+                  const t = String(a.time || '00:00').slice(0, 5);
+                  const isPastRow = d < today || (d === today && t < hm);
                   return (
-                    <div key={a.id} style={{ background: 'rgba(5,9,8,0.75)', padding: '12px 14px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <div key={a.id} style={{ background: 'rgba(5,9,8,0.75)', padding: '12px 14px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', opacity: isPastRow ? 0.78 : 1 }}>
                       <div>
                         <strong style={{ color: '#fff', fontSize: '13.5px' }}>{displayName}</strong>
                         <div style={{ fontSize: '11.5px', color: '#34d399', marginTop: '2px' }}>
@@ -3509,7 +3761,7 @@ ${summary}
                         </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                        {isAdmin && waPhone && (
+                        {isAdmin && waPhone && !isPastRow && (
                           <a
                             href={`https://wa.me/${waPhone}?text=${waMsg}`}
                             target="_blank"
@@ -3528,13 +3780,14 @@ ${summary}
                             💬 WhatsApp
                           </a>
                         )}
-                        <span className="status-badge status-badge--success">
-                          {a.status || 'Προγραμματισμένο'}
+                        <span className={`status-badge ${isPastRow ? 'status-badge--info' : 'status-badge--success'}`}>
+                          {isPastRow ? 'Ολοκληρωμένο' : (a.status || 'Προγραμματισμένο')}
                         </span>
                         {isAdmin && (
                           <button
                             type="button"
                             onClick={() => handleDeleteAppointment(a.id)}
+                            aria-label="Διαγραφή ραντεβού"
                             style={{ background: 'rgba(239,68,68,0.14)', border: 'none', color: '#fca5a5', borderRadius: '8px', padding: '5px 8px', fontSize: '11px', cursor: 'pointer' }}
                           >
                             ✕
@@ -3572,7 +3825,15 @@ ${summary}
 
             <div style={{ display: 'grid', gap: '9px' }}>
               {clientMeasurements.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: '13px' }}>Δεν έχουν καταγραφεί μετρήσεις ακόμα για τον πελάτη.</div>
+                <EmptyState
+                  icon="▣"
+                  title="Καμία μέτρηση ακόμα"
+                  body={
+                    isAdmin
+                      ? 'Καταγράψτε βάρος και ανθρωπομετρικά για να ξεκινήσει η καμπύλη προόδου.'
+                      : 'Οι μετρήσεις θα εμφανιστούν εδώ μόλις καταχωρηθούν από τη διατροφολόγο.'
+                  }
+                />
               ) : (
                 clientMeasurements.map((m) => (
                   <div key={m.id} style={{ background: 'rgba(5,9,8,0.75)', padding: '12px 14px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
