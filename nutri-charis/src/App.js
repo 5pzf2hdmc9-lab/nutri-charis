@@ -7,6 +7,9 @@ import LegalModal from './components/LegalModal';
 import MedicalFooter from './components/MedicalFooter';
 import GdprConsentFields from './components/GdprConsentFields';
 import GdprDataActions from './components/GdprDataActions';
+import SoapNotesPanel from './components/practice/SoapNotesPanel';
+import BillingPackagesPanel from './components/practice/BillingPackagesPanel';
+import ReminderCopyButton from './components/practice/ReminderCopyButton';
 
 // ============================================================================
 // ΑΥΣΤΗΡΗ ΛΙΣΤΑ ADMIN
@@ -53,12 +56,11 @@ const APPOINTMENT_TYPES = [
   'Τακτική συνεδρία'
 ];
 
-/** Practice tools not yet wired — shown as honest stubs (no fake backends). */
+/** Remaining practice tools not yet wired — honest stubs only (billing/SOAP/1-click reminders are live). */
 const PRACTICE_STUBS = [
-  { id: 'billing', title: 'Τιμολόγηση & Πληρωμές', body: 'Τιμολόγια, πακέτα συνεδριών και κάρτες — σύντομα.' },
-  { id: 'telehealth', title: 'Τηλεσυνεδρία', body: 'Ενσωματωμένο video · προς το παρόν χρησιμοποιήστε Zoom/Meet + WhatsApp υπενθύμιση.' },
-  { id: 'reminders', title: 'Αυτόματες Υπενθυμίσεις', body: 'SMS/Email 24ω πριν το ραντεβού — στη λίστα υλοποίησης.' },
-  { id: 'calendar', title: 'Google / Apple Calendar', body: 'Συγχρονισμός διαθεσιμότητας — stub, χωρίς σύνδεση ακόμα.' }
+  { id: 'telehealth', title: 'Τηλεσυνεδρία', body: 'Ενσωματωμένο video · προς το παρόν χρησιμοποιήστε Zoom/Meet + υπενθύμιση από τη λίστα ραντεβού.' },
+  { id: 'calendar', title: 'Google / Apple Calendar', body: 'Συγχρονισμός διαθεσιμότητας — stub, χωρίς σύνδεση ακόμα.' },
+  { id: 'auto-sms', title: 'Αυτόματο SMS 24ω', body: 'Προγραμματισμένο SMS/email — προς το παρόν 1-click αντιγραφή υπενθύμισης στα ραντεβού.' }
 ];
 
 const DEFAULT_MEAL_IDEAS = [
@@ -799,6 +801,7 @@ function NutriCharisPlatform() {
 
   // Navigation & Modals
   const [activeTab, setActiveTab] = useState('plan');
+  const [profileSubTab, setProfileSubTab] = useState('overview');
   const [selectedDay, setSelectedDay] = useState('Δευτέρα');
   const [cloneTargetDay, setCloneTargetDay] = useState('Πέμπτη');
   const [pdfTheme, setPdfTheme] = useState('green');
@@ -1054,6 +1057,10 @@ function NutriCharisPlatform() {
     const withFat = [...clientMeasurements].reverse().find((m) => m.body_fat != null);
     return withFat ? withFat.body_fat : null;
   }, [clientMeasurements]);
+
+  useEffect(() => {
+    setProfileSubTab('overview');
+  }, [activeClientId]);
 
   useEffect(() => {
     if (!activeClientObj) return;
@@ -3574,10 +3581,10 @@ ${summary}
             <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
                 <h4 style={{ margin: 0, fontSize: '13px', fontWeight: '800', color: '#e2e8f0' }}>Εργαλεία Πρακτικής</h4>
-                <span className="stub-chip">Σύντομα · stub</span>
+                <span className="stub-chip">Μερικά live · μερικά stub</span>
               </div>
               <p style={{ margin: '0 0 10px 0', fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.5 }}>
-                Ανταγωνιστές όπως Practice Better / Healthie / Jane περιλαμβάνουν αυτά — εδώ εμφανίζονται ως σαφή stubs χωρίς ψεύτικο backend.
+                SOAP notes, πακέτα/πληρωμές και 1-click υπενθυμίσεις είναι live στον φάκελο πελάτη και στα ραντεβού. Τα παρακάτω παραμένουν stubs χωρίς ψεύτικο backend.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '9px' }}>
                 {PRACTICE_STUBS.map((s) => (
@@ -3608,7 +3615,7 @@ ${summary}
         {/* ================================================================= */}
         {activeTab === 'profile' && activeClientObj && (
           <section className="luxury-card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '17.5px', fontWeight: '800' }}>📂 Κλινικός Φάκελος — {activeClientObj.name}</h3>
                 <div style={{ fontSize: '11.5px', color: '#94a3b8', marginTop: '3px' }}>
@@ -3619,7 +3626,7 @@ ${summary}
                   • Συντελεστής Άσκησης: <strong style={{ color: '#fbbf24' }}>{activeClientObj.questionnaire?.activityLevel || 1.375}</strong>
                 </div>
               </div>
-              {isAdmin && (
+              {isAdmin && profileSubTab === 'overview' && (
                 <button
                   type="button"
                   onClick={() => openClientEditModal(activeClientObj)}
@@ -3630,29 +3637,60 @@ ${summary}
               )}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '11px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '16px' }} role="tablist" aria-label="Ενότητες φακέλου">
               {[
-                { title: 'Στοιχεία Επικοινωνίας', body: `Email: ${activeClientObj.email || '—'} • Τηλ: ${activeClientObj.phone || '—'}` },
-                { title: 'Ανθρωπομετρικά & Στόχος', body: `Ηλικία: ${activeClientObj.age} • Βάρος: ${activeClientObj.weight}kg • Ύψος: ${activeClientObj.height}cm • BMI: ${clientMetabolism.mifflin.bmi} • Ημερήσιος Στόχος: ${activeTargetKcal} kcal` },
-                { title: 'Υγεία & Αλλεργίες', body: `${(activeClientObj.questionnaire?.healthConditions || []).join(', ') || 'Κανένα αναφερόμενο'} ${activeClientObj.questionnaire?.healthOther || ''}` },
-                { title: 'Φάρμακα & Συμπληρώματα', body: `Φάρμακα: ${activeClientObj.questionnaire?.medications || '—'} | Συμπληρώματα: ${activeClientObj.questionnaire?.supplements || '—'}` },
-                { title: 'Γαστρεντερικό & Νερό', body: `Στομάχι: ${activeClientObj.questionnaire?.stomachBloating || '—'} | Νερό: ${activeClientObj.questionnaire?.waterIntake || '1.5 - 2 λίτρα'}` },
-                { title: 'Διατροφικές Προτιμήσεις', body: `Φρούτα: ${(activeClientObj.questionnaire?.preferredFruits || []).join(', ') || 'Όλα'} | Λαχανικά: ${(activeClientObj.questionnaire?.preferredVegetables || []).join(', ') || 'Όλα'}` }
-              ].map((box) => (
-                <div key={box.title} style={{ background: 'rgba(5,9,8,0.75)', padding: '14px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <div style={{ fontSize: '10.5px', color: '#34d399', fontWeight: '800', marginBottom: '5px', textTransform: 'uppercase' }}>{box.title}</div>
-                  <div style={{ fontSize: '12px', color: '#e2e8f0', lineHeight: '1.5' }}>{box.body}</div>
-                </div>
+                { id: 'overview', label: 'Επισκόπηση' },
+                { id: 'soap', label: 'Ιστορικό & SOAP Notes' },
+                { id: 'billing', label: 'Πακέτα & Πληρωμές' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={profileSubTab === tab.id}
+                  className={`filter-chip ${profileSubTab === tab.id ? 'filter-chip--on' : 'filter-chip--off'}`}
+                  onClick={() => setProfileSubTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
               ))}
             </div>
 
-            <GdprDataActions
-              client={activeClientObj}
-              appointments={appointments}
-              measurements={measurements}
-              onPermanentDelete={handlePermanentDeleteClient}
-              disabled={!isAdmin && String(activeClientObj.user_id || '') !== String(session?.user?.id || '')}
-            />
+            {profileSubTab === 'overview' && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '11px' }}>
+                  {[
+                    { title: 'Στοιχεία Επικοινωνίας', body: `Email: ${activeClientObj.email || '—'} • Τηλ: ${activeClientObj.phone || '—'}` },
+                    { title: 'Ανθρωπομετρικά & Στόχος', body: `Ηλικία: ${activeClientObj.age} • Βάρος: ${activeClientObj.weight}kg • Ύψος: ${activeClientObj.height}cm • BMI: ${clientMetabolism.mifflin.bmi} • Ημερήσιος Στόχος: ${activeTargetKcal} kcal` },
+                    { title: 'Υγεία & Αλλεργίες', body: `${(activeClientObj.questionnaire?.healthConditions || []).join(', ') || 'Κανένα αναφερόμενο'} ${activeClientObj.questionnaire?.healthOther || ''}` },
+                    { title: 'Φάρμακα & Συμπληρώματα', body: `Φάρμακα: ${activeClientObj.questionnaire?.medications || '—'} | Συμπληρώματα: ${activeClientObj.questionnaire?.supplements || '—'}` },
+                    { title: 'Γαστρεντερικό & Νερό', body: `Στομάχι: ${activeClientObj.questionnaire?.stomachBloating || '—'} | Νερό: ${activeClientObj.questionnaire?.waterIntake || '1.5 - 2 λίτρα'}` },
+                    { title: 'Διατροφικές Προτιμήσεις', body: `Φρούτα: ${(activeClientObj.questionnaire?.preferredFruits || []).join(', ') || 'Όλα'} | Λαχανικά: ${(activeClientObj.questionnaire?.preferredVegetables || []).join(', ') || 'Όλα'}` }
+                  ].map((box) => (
+                    <div key={box.title} style={{ background: 'rgba(5,9,8,0.75)', padding: '14px', borderRadius: '13px', border: '1px solid rgba(255,255,255,0.07)' }}>
+                      <div style={{ fontSize: '10.5px', color: '#34d399', fontWeight: '800', marginBottom: '5px', textTransform: 'uppercase' }}>{box.title}</div>
+                      <div style={{ fontSize: '12px', color: '#e2e8f0', lineHeight: '1.5' }}>{box.body}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <GdprDataActions
+                  client={activeClientObj}
+                  appointments={appointments}
+                  measurements={measurements}
+                  onPermanentDelete={handlePermanentDeleteClient}
+                  disabled={!isAdmin && String(activeClientObj.user_id || '') !== String(session?.user?.id || '')}
+                />
+              </>
+            )}
+
+            {profileSubTab === 'soap' && (
+              <SoapNotesPanel client={activeClientObj} isAdmin={isAdmin} />
+            )}
+
+            {profileSubTab === 'billing' && (
+              <BillingPackagesPanel client={activeClientObj} isAdmin={isAdmin} />
+            )}
           </section>
         )}
 
@@ -3760,7 +3798,15 @@ ${summary}
                           📅 {a.date} • ⏰ {a.time} — <span style={{ color: '#94a3b8' }}>{a.notes || 'Συνεδρία'}</span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
+                        {isAdmin && !isPastRow && (
+                          <ReminderCopyButton
+                            clientName={displayName}
+                            date={a.date}
+                            time={a.time}
+                            sessionNotes={a.notes}
+                          />
+                        )}
                         {isAdmin && waPhone && !isPastRow && (
                           <a
                             href={`https://wa.me/${waPhone}?text=${waMsg}`}

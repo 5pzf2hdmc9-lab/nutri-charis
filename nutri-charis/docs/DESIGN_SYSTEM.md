@@ -22,6 +22,12 @@
 - Legal modals: max-width ~640px, scrollable, Greek copy.
 - Permanent medical disclaimer footer on auth + authenticated shell (`.MedicalFooter` glass panel with amber «Ιατρική Αποποίηση»).
 
+## Practice folder (SOAP / billing)
+- Client folder uses `.filter-chip` sub-tabs (Επισκόπηση / SOAP / Πακέτα) — one panel job each.
+- SOAP timeline: emerald left rail; adherence via `.status-badge--info` + `.font-mono-num`.
+- Billing progress: muted track + emerald gradient fill; month revenue telemetry in mono.
+- Reminder copy pill: sky idle → emerald «Αντιγράφηκε»; sits beside WhatsApp deep-link.
+
 ## Responsive
 - Mobile-first sticky header + bottom nav; forms use `minmax` grids; no horizontal overflow (`maxWidth: 100vw`).
 - Auth form column: `.auth-form-column` full-width centered on mobile.

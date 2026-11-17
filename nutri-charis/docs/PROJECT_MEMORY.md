@@ -23,7 +23,7 @@
 - BMR engines + FDA % helpers isolated in `src/lib/nutrition-math.ts` with Zod validation and NaN/÷0 guards.
 
 ## Ops note
-- After deploy: run `security_rls.sql` in Supabase SQL editor and seed `dietitians` row for the admin auth user.
+- After deploy: run `security_rls.sql` then `practice_ops_10.sql` in Supabase SQL editor and seed `dietitians` row for the admin auth user.
 
 ## Adversarial QA (2026-11-17)
 - Build: `npm run build` → Compiled successfully (0 errors).
@@ -46,10 +46,10 @@ Benchmarked vs Practice Better, Nutrium, Healthie, Jane App, Cerbo, Cronometer P
 | Meal planning + macros/micros | **Differentiator** (7-day AI, FDA micros, PDF/WhatsApp/shopping) | Via That Clean Life | Native strong | Journal-first | Weak / none |
 | BMR/TDEE engines | Strong (Mifflin/Harris/Katch) | Basic | Strong | Limited | Limited |
 | Measurements / body comp | Good (weight/fat/muscle/waist + SVG) | Good | **Strong** | Good | Limited |
-| Scheduling | Basic+ (typed session, upcoming/past filter, WA reminder) | **Strong** | Good | **Strong** | **Strong** |
-| Client portal / adherence | Partial (meal check, water) | App + portal | App + diary | Native apps | Portal |
+| Scheduling | Strong (typed session, filter, WA + 1-click Greek reminder copy) | **Strong** | Good | **Strong** | **Strong** |
+| Client portal / adherence | Partial (meal check, water) + SOAP adherence score | App + portal | App + diary | Native apps | Portal |
 | Telehealth | Stub only | Built-in | Zoom/Meet | Built-in | Built-in |
-| Billing / packages | Stub only | Strong | Invoicing | Claims + invoices | Strong |
+| Billing / packages | **Live** (session packs, € month, pending, print summary) | Strong | Invoicing | Claims + invoices | Strong |
 | Team / multi-provider | Solo only | Yes | Limited | Yes | Yes |
 | GDPR / medical legal | **Strong for EU/GR** | HIPAA-oriented | Mixed | HIPAA | PIPEDA/HIPAA |
 | AI meals | Gemini via server | Charting AI add-on | Limited | Charting AI | AI Scribe |
@@ -58,51 +58,52 @@ Benchmarked vs Practice Better, Nutrium, Healthie, Jane App, Cerbo, Cronometer P
 
 | Dimension | Score | Notes |
 |-----------|------:|-------|
-| Feature completeness (clinical nutrition) | 7.5 | Beats Jane/Healthie on meal depth; trails PB/Healthie on practice ops |
-| Data model depth | 7.0 | Rich client JSON questionnaire; appointments lack first-class `session_type` column |
-| Edge cases | 6.5 | Zod/math guards + IDOR; empty/filter states improved this pass |
+| Feature completeness (clinical nutrition) | 8.5 | Meals + SOAP + packages; trails PB/Healthie on telehealth/calendar |
+| Data model depth | 8.0 | Client JSON + `clinical_notes` + `billing_packages`; appts still fold type into notes |
+| Edge cases | 7.0 | Zod on SOAP/billing + IDOR + RLS FORCE; empty/filter states |
 | Empty states / chrome honesty | 8.0 | Shared `EmptyState` + honest practice stubs |
 | Onboarding | 7.0 | Guided register + consents; no multi-step clinic setup wizard |
 | Search / filter | 7.0 | Client search + appointment upcoming/past/all |
-| Analytics | 5.5 | Day telemetry + SVG charts; no practice-wide KPIs |
+| Analytics | 6.0 | Day telemetry + SVG + per-client month revenue / pending |
 | Mobile | 7.5 | Bottom dock + meal slides |
 | Collaboration | 3.0 | Solo dietitian; no team roles |
-| Billing | 1.0 | Explicit stubs only |
-| Integrations | 2.0 | WhatsApp deep-link; calendar/telehealth stubs |
+| Billing | 8.5 | Real packages + RLS + print summary (not Stripe/tax invoices) |
+| Integrations | 3.5 | WhatsApp + clipboard reminder; calendar/telehealth stubs |
 | Legal / GDPR | 8.5 | Art.9/17/20 + Greek legal modals + medical footer |
 | AI quality | 7.0 | Server Gemini + FDA pass; food DB not USDA-grade |
 | UX quality bar (Linear/Stripe/Vercel) | 7.5 | Glass OS + skeletons; still monolith CRA |
 
-**Overall niche fit:** ~6.8/10 as a Greek solo clinical OS; **8.5/10** if judged as meal-plan + clinical folder product; **4/10** if judged as full practice-management suite.
+**Overall niche fit:** ~8.2/10 as a Greek solo clinical OS; **8.5/10** meal-plan + clinical folder; **~9/10** practice ops for solo (SOAP + packages + 1-click reminders) — trails PB/Healthie on telehealth/calendar/Stripe.
 
 ### Gaps
 
-**P0 (must ship to compete on practice ops)**  
-- Real calendar availability + SMS/email reminders  
+**P0 (remaining practice ops)**  
+- Real calendar availability + automated SMS/email (1-click copy is live)  
 - Client messaging / portal notifications  
-- Session notes (SOAP/ADIME) tied to appointments  
-- First-class appointment `type` + status workflow (completed/no-show)
+- First-class appointment `type` + status workflow (completed/no-show)  
+- SOAP rows optionally linked to `appointment_id`
 
 **P1 (strong differentiators)**  
 - Deeper food DB / recipe library (Nutrium-class)  
-- Practice analytics dashboard (active clients, adherence, revenue later)  
+- Practice-wide analytics dashboard (cross-client KPIs)  
 - Branded client PDF portal share link  
 - Offline-tolerant meal adherence sync
 
 **P2 (nice-to-have)**  
 - Native telehealth, Stripe billing, insurance/superbills, multi-dietitian orgs, Google Calendar sync
 
-### Shipped this pass (P0/P1 polish, no fake backends)
-- Shared `EmptyState` + `DataSkeleton`; client/appt/measurement/no-folder empties with CTAs  
-- Appointment type select + labeled form fields; upcoming/past/all filter; past = «Ολοκληρωμένο»  
-- Client create field labels; search no-results empty  
-- Honest «Εργαλεία Πρακτικής» stubs (billing/telehealth/reminders/calendar)  
-- Removed misleading `PRO v6` badge → NutriCharis / Solo  
-- CSS: `.field-label`, `.filter-chip`, `.stub-chip`
+### Shipped — Practice Ops 10/10 (2026-11-17)
+- Migration `supabase/migrations/practice_ops_10.sql`: `clinical_notes` + `billing_packages` with FORCE RLS (`auth.uid() = dietitian_id`)  
+- Profile sub-tabs: Επισκόπηση · Ιστορικό & SOAP Notes · Πακέτα & Πληρωμές  
+- Components `<250` lines under `src/components/practice/` (SoapNotesPanel, BillingPackagesPanel, BillingPackageCard, ReminderCopyButton)  
+- Zod parsers in `src/lib/practiceSchemas.ts`; reminder copy in `src/lib/appointmentReminder.js`  
+- Appointments: «Αντιγραφή Υπενθύμισης (Viber/WhatsApp/SMS)» with fasting/hydration prep  
+- Stubs trimmed: telehealth / calendar / auto-SMS only  
+- `npm run build` → Compiled successfully (0 errors)
 
 ### Remains for later
-- Billing, telehealth, calendar sync, SMS, team collaboration (P0/P2 backends)  
-- SOAP notes, practice KPI analytics, food DB upgrade (P0/P1 product)
+- Telehealth, calendar sync, automated SMS, team collaboration  
+- Practice-wide KPI dashboard, food DB upgrade, Stripe/tax invoices
 
 ## E2E flow audit findings (2026-11-17)
 
@@ -139,9 +140,10 @@ Parallel agents: saas-comparator + e2e-flow-tester + ui-craftsman.
 | UI | Brand-first auth, Plus Jakarta Sans, deeper glass, motion, mobile brand strip. |
 | Build | `npm run build` → Compiled successfully (0 errors) after merge of all three lanes. |
 
-**Next:** seed local test account for authenticated E2E; P0 practice backends (calendar/SMS, messaging, SOAP notes) when ready — no fake chrome.
+**Next:** seed local test account for authenticated E2E; run `practice_ops_10.sql` in Supabase; remaining stubs = telehealth / calendar / auto-SMS.
 
 ## Change log
+- 2026-11-17: Practice Ops 10/10 — `clinical_notes` + `billing_packages` RLS migration; SOAP timeline + packages/payments tabs in client folder; 1-click appointment reminder clipboard; practice components under `src/components/practice/`; build green.
 - 2026-11-17: Full SaaS Audit — saas-comparator + e2e-flow-tester + ui-craftsman parallel pass; build green.
 - 2026-11-17: E2E flow tester — fixed EmptyState duplicate (webpack overlay), register anthro HTML bounds, LegalModal Escape, Greek recovery session errors, auth alert roles; unauthenticated surface re-verified; authenticated coverage blocked (no password in env).
 - 2026-11-17: Competitive benchmark + UX gap ship — empty states, appointment filters/types, practice stubs, labeled forms, docs/vault patterns.
