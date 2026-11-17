@@ -260,6 +260,7 @@ Shipped: Jitsi `meet.jit.si` open/copy (not embedded video SDK); Google Calendar
 3. Real payment rails (Stripe/GR PSP) + fiscal invoices — packages are internal progress/print only.
 
 ## Change log
+- 2026-11-17: Playwright live E2E green (`npx playwright test`) — `e2e/nutricharis.spec.ts` clicks auth, all tabs, meal 7×5 template+AI persistence, shopping/PDF, SOAP, billing, appointments, measurements/skinfolds, practice tools, BMR, mobile dock. Creds via `.env.local` `E2E_*` + `REACT_APP_ADMIN_EMAIL` (dedicated dietitian; service-role Admin API key was unregistered). Fixes: `isAdmin` also trusts `dietitians` row; bigint `id` defaults for clients/appointments/measurements; `appointments.notes` column; appointment insert sends legacy `type`/`client`.
 - 2026-11-17: Security-legal Excellence Pass audit — PASS secrets/RLS-consent/legal/deep-links after P1 fixes (mailto validation, ICS CR/LF, opaque Jitsi slug, Jitsi privacy copy).
 - 2026-11-17: Security-legal auditor Excellence Pass — **4/4 PASS** (secrets, RLS consent, legal, deep-links); P1 mailto/ICS/Jitsi opacity + Jitsi privacy disclosure; residual = public Jitsi without DPA.
 - 2026-11-17: Honest Excellence Pass competitive scorecard — NutriCharis **7.8/10** vs Nutripal/Athlisis/Dieta/Nutrium/PB/Healthie; Jitsi/GCal/notify scored as deep-link class (ops 6.0).

@@ -24,7 +24,13 @@ export function useAppointments(deps) {
         showToast(`⚠️ ${parsed.error.issues?.[0]?.message || 'Μη έγκυρο ραντεβού.'}`);
         return;
       }
-      const payload = { ...parsed.data, dietitian_id: user.id };
+      const payload = {
+        ...parsed.data,
+        dietitian_id: user.id,
+        // Legacy column still present on some environments
+        type: typeLabel,
+        client: sanitizeText(activeClientObj.name, 120)
+      };
       const { data, error } = await supabase.from('appointments').insert([payload]).select();
       if (error) {
         showToast(`⚠️ ${error.message}`);
