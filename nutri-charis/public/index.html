@@ -1,21 +1,16 @@
 <!DOCTYPE html>
 <html lang="el">
   <head>
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="NutriCharis" /><meta charset="utf-8" />
+    <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#064e3b" />
-    <meta name="description" content="NutriCharis Diet OS" />
-    
-    <!-- iOS / PWA Meta Tags -->
+    <meta name="description" content="NutriCharis — κλινικό διαιτολογικό γραφείο Χάρις Φωτούδη" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="NutriCharis" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    
     <title>NutriCharis</title>
     <style>
       #initial-loader {
@@ -27,7 +22,7 @@
         align-items: center;
         justify-content: center;
         color: #34d399;
-        font-family: Inter, system-ui, sans-serif;
+        font-family: "Plus Jakarta Sans", system-ui, sans-serif;
         z-index: 99999;
         transition: opacity 0.3s ease;
       }
@@ -40,18 +35,19 @@
         margin-bottom: 12px;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .loader-spinner { animation: none; }
+        #initial-loader { transition: none; }
+      }
     </style>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    
+    <noscript>Ενεργοποιήστε τη JavaScript για να χρησιμοποιήσετε το NutriCharis.</noscript>
     <div id="initial-loader">
       <div class="loader-spinner"></div>
       <div style="font-weight: 700; font-size: 14px; letter-spacing: 0.5px; color: #ffffff;">NutriCharis</div>
     </div>
-
     <div id="root"></div>
-
     <script>
       window.addEventListener('load', () => {
         setTimeout(() => {

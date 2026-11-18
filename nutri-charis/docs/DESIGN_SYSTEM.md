@@ -2,7 +2,7 @@
 
 ## Visual language
 - Dark clinical OS: deep greens (`#022c22`, `#050807`) with emerald accents (`#10b981`, `#34d399`).
-- Typography: **Plus Jakarta Sans** for UI + `.font-display` headings (Inter removed); numeric telemetry via `.font-mono-num` (JetBrains Mono).
+- Typography: **Plus Jakarta Sans** (self-hosted via `@fontsource`, latin + latin-ext) for UI and `.font-display`. Greek copy falls back to `system-ui` because the face has no Greek subset. Numeric telemetry via `.font-mono-num` (JetBrains Mono, self-hosted). No Google Fonts request (CSP `font-src 'self'` and no third-party IP on a health app). Inter is not used.
 - Surfaces: `.luxury-card` / `.luxury-input` / `.glass-elevated` — deeper blur + emerald inset wash; not generic white dashboard cards.
 - Overlays: `.glass-modal-backdrop` (blur + emerald radial wash) for recovery, legal, PDF, templates, edit modals.
 - Actions: `.btn-emerald` primary CTA, `.btn-ghost-danger` for logout/destructive chrome; `:focus-visible` emerald ring on controls.

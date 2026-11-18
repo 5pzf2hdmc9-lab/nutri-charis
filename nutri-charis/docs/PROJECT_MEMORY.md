@@ -259,7 +259,16 @@ Shipped: Jitsi `meet.jit.si` open/copy (not embedded video SDK); Google Calendar
 2. Curated food DB + recipes + client portal/app (Nutrium / Athlisis / Nutripal class).
 3. Real payment rails (Stripe/GR PSP) + fiscal invoices — packages are internal progress/print only.
 
+## Quality gate (2026-11-18)
+
+- Security: `zz_quality_gate_tenant_rls.sql` removes blanket `OR is_dietitian()` access. Ownership is `private.uid()`. A sole dietitian can still see unassigned folders; a second dietitian cannot. Run this file **last** in the Supabase SQL editor.
+- Client bundle no longer hardcodes a personal admin email. Admin UI is the `dietitians` row, with optional `REACT_APP_ADMIN_EMAIL`.
+- AI route validates the body with Zod `.strict()`, rejects browser API keys, and rate-limits on `x-real-ip` (last forwarded hop as fallback).
+- Fonts are self-hosted so production CSP does not drop Plus Jakarta Sans.
+- E2E: `e2e/auth-surface.spec.ts` clicks login, register, recovery, consents, and all four legal modals. Live clinical spec skips unless `E2E_EMAIL` / `E2E_PASSWORD` are set. `npm run build` compiled successfully.
+
 ## Change log
+- 2026-11-18: Autonomous quality gate — tenant RLS, admin email removed from the bundle, Zod on `/api/generate-meals`, self-hosted fonts, auth-surface Playwright, root security headers. Build green. Authenticated browser pass still needs seeded E2E credentials. Apply `zz_quality_gate_tenant_rls.sql` in Supabase.
 - 2026-11-17: Playwright live E2E green (`npx playwright test`) — `e2e/nutricharis.spec.ts` clicks auth, all tabs, meal 7×5 template+AI persistence, shopping/PDF, SOAP, billing, appointments, measurements/skinfolds, practice tools, BMR, mobile dock. Creds via `.env.local` `E2E_*` + `REACT_APP_ADMIN_EMAIL` (dedicated dietitian; service-role Admin API key was unregistered). Fixes: `isAdmin` also trusts `dietitians` row; bigint `id` defaults for clients/appointments/measurements; `appointments.notes` column; appointment insert sends legacy `type`/`client`.
 - 2026-11-17: Security-legal Excellence Pass audit — PASS secrets/RLS-consent/legal/deep-links after P1 fixes (mailto validation, ICS CR/LF, opaque Jitsi slug, Jitsi privacy copy).
 - 2026-11-17: Security-legal auditor Excellence Pass — **4/4 PASS** (secrets, RLS consent, legal, deep-links); P1 mailto/ICS/Jitsi opacity + Jitsi privacy disclosure; residual = public Jitsi without DPA.

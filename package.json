@@ -10,10 +10,10 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "CI=false react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "npm start --prefix nutri-charis",
+    "build": "npm run build --prefix nutri-charis",
+    "test": "npm test --prefix nutri-charis -- --watchAll=false",
+    "eject": "echo \"Eject is disabled. The app lives in nutri-charis.\" && exit 1"
   },
   "eslintConfig": {
     "extends": [

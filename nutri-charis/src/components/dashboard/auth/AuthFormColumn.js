@@ -118,12 +118,13 @@ export default function AuthFormColumn() {
                     {authMode === 'login' && (
                       <button
                         type="button"
+                        className="text-link-btn"
                         onClick={() => {
                           setAuthMode('forgot');
                           setAuthError('');
                           setAuthSuccess('');
                         }}
-                        style={{ background: 'none', border: 'none', color: '#34d399', fontSize: '11.5px', fontWeight: '700', cursor: 'pointer', padding: 0 }}
+                        style={{ fontSize: '11.5px', padding: 0 }}
                       >
                         Ξέχασα τον κωδικό μου;
                       </button>
@@ -144,18 +145,17 @@ export default function AuthFormColumn() {
                     />
                     <button
                       type="button"
+                      className="text-link-btn"
+                      aria-pressed={showPassword}
+                      aria-label={showPassword ? 'Απόκρυψη κωδικού' : 'Προβολή κωδικού'}
                       onClick={() => setShowPassword(!showPassword)}
                       style={{
                         position: 'absolute',
                         right: '10px',
                         top: '50%',
                         transform: 'translateY(-50%)',
-                        background: 'none',
-                        border: 'none',
                         color: '#94a3b8',
-                        fontSize: '11.5px',
-                        cursor: 'pointer',
-                        fontWeight: '700'
+                        fontSize: '11.5px'
                       }}
                     >
                       {showPassword ? 'Απόκρυψη' : 'Προβολή'}
@@ -201,12 +201,12 @@ export default function AuthFormColumn() {
               {authMode === 'forgot' ? (
                 <button
                   type="button"
+                  className="text-link-btn"
                   onClick={() => {
                     setAuthMode('login');
                     setAuthError('');
                     setAuthSuccess('');
                   }}
-                  style={{ background: 'none', border: 'none', color: '#34d399', fontWeight: '700', cursor: 'pointer' }}
                 >
                   ← Επιστροφή στη Σύνδεση
                 </button>
@@ -215,12 +215,12 @@ export default function AuthFormColumn() {
                   {authMode === 'login' ? 'Νέος πελάτης; ' : 'Έχετε ήδη λογαριασμό; '}
                   <button
                     type="button"
+                    className="text-link-btn"
                     onClick={() => {
                       setAuthMode(authMode === 'login' ? 'register' : 'login');
                       setAuthError('');
                       setAuthSuccess('');
                     }}
-                    style={{ background: 'none', border: 'none', color: '#34d399', fontWeight: '700', cursor: 'pointer' }}
                   >
                     {authMode === 'login' ? 'Εγγραφή & Ιστορικό' : 'Σύνδεση'}
                   </button>

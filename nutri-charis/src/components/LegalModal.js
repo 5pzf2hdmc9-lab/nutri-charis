@@ -83,14 +83,27 @@ export default function LegalModal({ docKey, onClose }) {
         style={{
           width: '100%',
           maxWidth: '640px',
-          maxHeight: '85vh',
+          maxHeight: 'min(85vh, 760px)',
           overflow: 'auto',
           padding: '24px',
           animation: 'fadeInSlide 0.22s ease'
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '14px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: '12px',
+            marginBottom: '14px',
+            position: 'sticky',
+            top: 0,
+            zIndex: 1,
+            paddingBottom: '8px',
+            background: 'linear-gradient(180deg, #0b1411 70%, rgba(11, 20, 17, 0))'
+          }}
+        >
           <h2 id="legal-modal-title" className="font-display" style={{ margin: 0, fontSize: '18px', color: '#ecfdf5' }}>
             {doc.title}
           </h2>
@@ -116,16 +129,16 @@ export default function LegalModal({ docKey, onClose }) {
 export function LegalLinks({ onOpen }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center', fontSize: '11px' }}>
-      <button type="button" onClick={() => onOpen('privacy')} style={linkBtn}>
+      <button type="button" className="text-link-btn" onClick={() => onOpen('privacy')} style={linkBtn}>
         Πολιτική Απορρήτου
       </button>
-      <button type="button" onClick={() => onOpen('terms')} style={linkBtn}>
+      <button type="button" className="text-link-btn" onClick={() => onOpen('terms')} style={linkBtn}>
         Όροι Χρήσης
       </button>
-      <button type="button" onClick={() => onOpen('cookies')} style={linkBtn}>
+      <button type="button" className="text-link-btn" onClick={() => onOpen('cookies')} style={linkBtn}>
         Cookies / Storage
       </button>
-      <button type="button" onClick={() => onOpen('ai')} style={linkBtn}>
+      <button type="button" className="text-link-btn" onClick={() => onOpen('ai')} style={linkBtn}>
         AI Transparency
       </button>
     </div>
@@ -133,11 +146,7 @@ export function LegalLinks({ onOpen }) {
 }
 
 const linkBtn = {
-  background: 'none',
-  border: 'none',
-  color: '#34d399',
-  fontWeight: 700,
-  cursor: 'pointer',
-  padding: 0,
-  textDecoration: 'underline'
+  fontSize: '11px',
+  textDecoration: 'underline',
+  padding: 0
 };

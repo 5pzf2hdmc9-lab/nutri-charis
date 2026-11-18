@@ -47,7 +47,7 @@ export default function GdprConsentFields({
         />
         <span>
           Αποδέχομαι την{' '}
-          <button type="button" onClick={() => onOpenLegal?.('privacy')} style={inlineLink}>
+          <button type="button" className="text-link-btn" onClick={() => onOpenLegal?.('privacy')} style={inlineLink}>
             Πολιτική Απορρήτου (GDPR)
           </button>{' '}
           και την επεξεργασία των προσωπικών μου δεδομένων.
@@ -79,11 +79,11 @@ export default function GdprConsentFields({
         />
         <span>
           Αποδέχομαι τους{' '}
-          <button type="button" onClick={() => onOpenLegal?.('terms')} style={inlineLink}>
+          <button type="button" className="text-link-btn" onClick={() => onOpenLegal?.('terms')} style={inlineLink}>
             Όρους Χρήσης
           </button>{' '}
           και την{' '}
-          <button type="button" onClick={() => onOpenLegal?.('cookies')} style={inlineLink}>
+          <button type="button" className="text-link-btn" onClick={() => onOpenLegal?.('cookies')} style={inlineLink}>
             Πολιτική Cookies/Storage
           </button>
           .
