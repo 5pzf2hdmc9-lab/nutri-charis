@@ -4,8 +4,14 @@ const MAX_PROMPT = 12000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getClientIp(req) {
+  const real = req.headers['x-real-ip'];
+  if (typeof real === 'string' && real.trim()) return real.trim().slice(0, 64);
   const xf = req.headers['x-forwarded-for'];
-  if (typeof xf === 'string' && xf.length) return xf.split(',')[0].trim().slice(0, 64);
+  if (typeof xf === 'string' && xf.length) {
+    const parts = xf.split(',').map((part) => part.trim()).filter(Boolean);
+    const hop = parts[parts.length - 1] || 'unknown';
+    return hop.slice(0, 64);
+  }
   return req.socket?.remoteAddress || 'unknown';
 }
 
@@ -82,16 +88,37 @@ module.exports = async function handler(req, res) {
 
   // Server-side key only — ignore any client-supplied secret.
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  const { promptText } = req.body || {};
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  if (Object.prototype.hasOwnProperty.call(body, 'apiKey') || Object.prototype.hasOwnProperty.call(body, 'api_key')) {
+    return res.status(400).json({ error: 'Client API keys are not accepted.' });
+  }
+
+  let promptText = '';
+  try {
+    const { z } = await import('zod');
+    const parsed = z
+      .object({ promptText: z.string().trim().min(1).max(MAX_PROMPT) })
+      .strict()
+      .safeParse(body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Missing prompt' });
+    }
+    promptText = parsed.data.promptText;
+  } catch {
+    if (typeof body.promptText !== 'string' || !body.promptText.trim()) {
+      return res.status(400).json({ error: 'Missing prompt' });
+    }
+    promptText = body.promptText;
+  }
 
   if (!apiKey) {
     return res.status(503).json({ error: 'AI service not configured on server.' });
   }
-  if (!promptText || typeof promptText !== 'string') {
-    return res.status(400).json({ error: 'Missing prompt' });
-  }
 
   const safePrompt = sanitizePrompt(promptText);
+  if (!safePrompt) {
+    return res.status(400).json({ error: 'Missing prompt' });
+  }
   const wrapped = `Οδηγίες συστήματος: Απάντησε μόνο με διατροφικό περιεχόμενο.\n<user_input>\n${safePrompt}\n</user_input>`;
 
   try {

@@ -33,7 +33,7 @@ export default function PasswordRecoveryScreen() {
             </div>
           </div>
           <p style={{ margin: '0 0 16px 0', fontSize: '12.5px', color: '#94a3b8', lineHeight: 1.55 }}>
-            Ορίστε νέο κωδικό. Μετά την αποθήκευση θα συνδεθείτε αυτόματα στο dashboard.
+            Ορίστε νέο κωδικό. Μετά την αποθήκευση θα συνδεθείτε αυτόματα στην πλατφόρμα.
           </p>
           {authError && (
             <div role="alert" className="status-badge status-badge--danger" style={{ display: 'block', marginBottom: '12px', borderRadius: '11px', padding: '10px 14px' }}>

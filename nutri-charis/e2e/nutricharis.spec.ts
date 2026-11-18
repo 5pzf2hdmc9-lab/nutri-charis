@@ -24,6 +24,10 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('NutriCharis live E2E', () => {
   test('full clinical OS flows against live Supabase', async ({ page, context }) => {
+    test.skip(
+      !(process.env.E2E_EMAIL || '').trim() || !process.env.E2E_PASSWORD,
+      'Authenticated clinical flows need E2E_EMAIL and E2E_PASSWORD for a seeded dietitian. They are not invented in CI.'
+    );
     const guards = attachGuards(page);
     await installApiMocks(page);
     await acceptDialogs(page);

@@ -40,7 +40,7 @@ export default function PrintableExcelSheet({ id, theme = 'green', clientObj, me
         overflow: 'hidden',
         border: `2px solid ${palette.bannerBg}`,
         color: palette.cellText,
-        fontFamily: "'Inter', sans-serif"
+        fontFamily: "'Plus Jakarta Sans', sans-serif"
       }}
     >
       <div

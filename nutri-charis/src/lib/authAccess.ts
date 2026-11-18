@@ -42,8 +42,10 @@ export function canAccessClient(
   if (!client || !user?.id) return false;
   if (isDietitian) {
     if (client.dietitian_id) return client.dietitian_id === user.id;
-    // Legacy rows without dietitian_id: only hard-admin dietitian path (email whitelist) may touch them.
-    return true;
+    // Unassigned folders: the UI may offer them, but Postgres sole_dietitian()
+    // is what actually allows the write. Never treat "is a dietitian" as access
+    // to a folder owned by someone else.
+    return client.dietitian_id == null;
   }
   if (client.user_id && client.user_id === user.id) return true;
   const clientEmail = String(client.email || '')

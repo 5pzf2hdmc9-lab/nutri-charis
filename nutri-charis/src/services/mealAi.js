@@ -6,6 +6,10 @@ import { supabase } from '../supabaseClient';
  */
 export async function callMealAi(promptText) {
   const prompt = String(promptText || '').slice(0, 12000);
+  const { data: userData, error: userErr } = await supabase.auth.getUser();
+  if (userErr || !userData?.user?.id) {
+    throw new Error('Απαιτείται πιστοποίηση για την υπηρεσία AI.');
+  }
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData?.session?.access_token;
   if (!token) {
